@@ -63,8 +63,8 @@ adam = tfa.optimizers.AdamW(learning_rate = learning_rate, weight_decay = weight
 
 # Loss Function
 # ----------------------------------------------------------------------------------------------
-# loss = focal_loss()
-loss = sm.losses.DiceLoss()
+loss = focal_loss()
+# loss = sm.losses.DiceLoss()
 custom_obj['loss'] = focal_loss()
 
 # Compile

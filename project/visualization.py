@@ -133,6 +133,14 @@ def display_raw_data(config):
                      }
     plot(display_list, (id+"_"+id2), (config['visualization_dir']+'display_raw_data'))
 
+def total_pixel(data):
+    masks = data["masks"]
+    pixels = {"Water":0, "NON-Water":0}
+    for i in range(len(masks)):
+        mask = read_img(masks[i], label=True)
+        pixels["Water"] += np.sum(mask)
+        pixels["NON-Water"] += (mask.shape[0]*mask.shape[1]) - np.sum(mask)
+    return pixels
 
 
 if __name__=='__main__':

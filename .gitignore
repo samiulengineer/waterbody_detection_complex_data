@@ -169,6 +169,8 @@ data
 *trace
 prediction
 visualization
+logs
+model
 
 
 

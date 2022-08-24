@@ -8,7 +8,7 @@ tile_width : 512
 # ----------------------------------------------------------------------------------------------
 # mnet = fapnet, unet, fapnet, ex_mnet, dncnn, u2net, vnet, unet++, sm_unet, sm_linknet, sm_fpn, sm_pspnet, kuc_vnet, kuc_unet3pp, kuc_r2unet, kuc_unetpp, kuc_restunet, kuc_tensnet, kuc_swinnet, kuc_u2net, kuc_attunet, ad_unet, transformer
 model_name : unet
-batch_size : 10
+batch_size : 20
 epochs : 1000
 learning_rate : !!float 3e-4
 val_plot_epoch : 20
