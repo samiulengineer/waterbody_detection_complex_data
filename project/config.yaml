@@ -8,7 +8,7 @@ tile_width : 512
 # ----------------------------------------------------------------------------------------------
 # mnet = fapnet, unet, fapnet, ex_mnet, dncnn, u2net, vnet, unet++, sm_unet, sm_linknet, sm_fpn, sm_pspnet, kuc_vnet, kuc_unet3pp, kuc_r2unet, kuc_unetpp, kuc_restunet, kuc_tensnet, kuc_swinnet, kuc_u2net, kuc_attunet, ad_unet, transformer
 model_name : unet
-batch_size : 20
+batch_size : 10
 epochs : 1000
 learning_rate : !!float 3e-4
 val_plot_epoch : 20
@@ -20,13 +20,13 @@ gpu : !!str 2
 # ----------------------------------------------------------------------------------------------
 # regular/cls_balance/patchify/patchify_WOC
 # cfr = regular, cfr_cb = cls_balance, phr = patchify without class balance, phr_cb = patchify with class balance
-experiment : patchify
+experiment : cfr_cb
 
 # Patchify (phr & phr_cb experiment)
 # ----------------------------------------------------------------------------------------------
-patchify : True
+patchify : False
 patch_class_balance : False # whether to use class balance while doing patchify
-patch_size : 256 # height = width, anyone is suitable
+patch_size : 512 # height = width, anyone is suitable
 stride : 64
 p_train_dir : json/train_patch_256.json
 p_valid_dir : json/valid_patch_256.json
@@ -34,8 +34,8 @@ p_test_dir : json/test_patch_256.json
 
 # Dataset
 # ----------------------------------------------------------------------------------------------
-weights : False # False if cfr, True if cfr_cb
-balance_weights : [1.4, 8.6] # cfr_cb experiment
+weights : True # False if cfr, True if cfr_cb
+balance_weights : [0.76, 0.24] # cfr_cb experiment
 visualization_dir : /home/mdsamiul/github_project/waterbody_segmentation_complex_data/visualization/
 dataset_dir : /home/mdsamiul/github_project/waterbody_segmentation_complex_data/data/
 root_dir : /home/mdsamiul/github_project/waterbody_segmentation_complex_data

@@ -260,9 +260,10 @@ def mod_unet(config):
     c13 = Dropout(0.2)(c13)  # Original 0.1
     c13 = Conv2D(16, (3, 3), activation='relu', kernel_initializer='he_normal', padding='same')(c13)
      
-    outputs = Conv2D(config['num_classes'], (1, 1), activation='softmax', dtype='float32')(c13)
+    outputs = Conv2D(config['num_classes'], (1, 1), activation='softmax', dtype='float32', name="out1")(c9)
+    outputs2 = Conv2D(config['num_classes'], (1, 1), activation='softmax', dtype='float32', name="out2")(c9)
      
-    model = Model(inputs=[inputs], outputs=[outputs])
+    model = Model(inputs=[inputs], outputs=[outputs, outputs2])
     
     return model
 

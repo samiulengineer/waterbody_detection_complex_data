@@ -133,22 +133,25 @@ def display_raw_data(config):
                      }
     plot(display_list, (id+"_"+id2), (config['visualization_dir']+'display_raw_data'))
 
-def total_pixel(data):
-    masks = data["masks"]
-    pixels = {"Water":0, "NON-Water":0}
-    for i in range(len(masks)):
-        mask = read_img(masks[i], label=True)
-        pixels["Water"] += np.sum(mask)
-        pixels["NON-Water"] += (mask.shape[0]*mask.shape[1]) - np.sum(mask)
+def total_pixel(config):
+    label = sorted(glob.glob(config["dataset_dir"]+"label/*.ras"))
+    rslc1_label = readRas(label[0])[0]
+
+    rslc1_label[rslc1_label==255] = 1
+    total_pix = rslc1_label.shape[0]*rslc1_label.shape[1]
+    pixels = {"Water":np.sum(rslc1_label)/total_pix, 
+              "NON-Water":((rslc1_label.shape[0]*rslc1_label.shape[1]) - np.sum(rslc1_label))/total_pix}
     return pixels
 
 
 if __name__=='__main__':
     
-    # config = get_config_yaml('config.yaml', {})
+    
     config = get_config_yaml('config.yaml', {})
-    print("Saving figures in {}".format(config["visualization_dir"]))
-    display_raw_data(config)
+    print(total_pixel(config))
+    
+    # print("Saving figures in {}".format(config["visualization_dir"]))
+    # display_raw_data(config)
 
     # train_dir = pd.read_csv(config['train_dir'])
     # print("Train examples: ", len(train_dir))
