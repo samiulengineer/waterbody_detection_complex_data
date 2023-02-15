@@ -1,21 +1,17 @@
 import os
 import math
 import json
-import glob
 import rasterio
-import pathlib
 import numpy as np
 import pandas as pd
 import tensorflow as tf
 import albumentations as A
 import matplotlib
-from progressbar import ProgressBar
-import cv2
+from tiles import readRas
+from mrc_insar_common.data import data_reader
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import MinMaxScaler
 from tensorflow.keras.utils import to_categorical, Sequence
-from mrc_insar_common.data import data_reader
-
 matplotlib.use('Agg')
 
 
@@ -30,23 +26,6 @@ label_norm = {0:["_vv.tif", -17.54, 5.15],
                 7:["_jrc-gsw-seasonality.tif", 2.60, 22.79],
                 8:["_jrc-gsw-transitions.tif", 0.55, 1.94]}
 
-rasMagic = 0x59A66A95
-rasTypeH = '>i4'
-rasTypeA = '>u1'
-dtypes = {
-    'byte': '>u1',
-    'int': '>i2',
-    'uint': '>u2',
-    'long': '>i4',
-    'ulong': '>u4',
-    'float': '>f4',
-    'double': '>f8',
-    'scomplex': '>i2',
-    'fcomplex': '>c8',
-    'complex': '>c8',
-    'bool': 'bool',
-    'ptsel_inds': '<i4'
-}
 
 def transform_data(inp, mask1, mask2, num_class, scale=True):
     """
@@ -72,6 +51,7 @@ def transform_data(inp, mask1, mask2, num_class, scale=True):
 
 
     return np.array(inputs), to_categorical(mask1, num_class), to_categorical(mask2, num_class)
+
 
 
 def read_img(data_p, in_channels=None, label=False, patch_idx=None, width=512):
@@ -108,7 +88,6 @@ def read_img(data_p, in_channels=None, label=False, patch_idx=None, width=512):
         rslc1_label = rslc1_label[patch_idx[0]:patch_idx[1], patch_idx[2]:patch_idx[3]]
     else:
         inputs = np.stack([rslc0_amp, rslc1_amp, ifg], axis=-1)
-        # inputs = np.stack([rslc0_amp, rslc1_amp], axis=-1)
 
     
 
@@ -127,6 +106,7 @@ def data_split(images, config):
         return the split data.
     """
 
+
     x_train, x_rem = train_test_split(images, train_size = config['train_size'], random_state=42)
     x_valid, x_test = train_test_split(x_rem, test_size = 0.5, random_state=42)
     return x_train, x_valid, x_test
@@ -143,254 +123,10 @@ def save_csv(dictionary, config, name):
     Return:
         save file
     """
-    # converting dictionary to pandas dataframe
     df = pd.DataFrame.from_dict(dictionary)
-    # from dataframe to csv
     df.to_csv((config['dataset_dir']+name), index=False, header=True)
 
 
-def video_to_frame(config):
-    """
-    Summary:
-        create frames from video
-    Arguments:
-        config (dict): configuration dictionary
-    Return:
-        frames
-    """
-    
-    vidcap = cv2.VideoCapture(config["video_path"])
-    success,image = vidcap.read()
-    count = 0
-    while success:
-        cv2.imwrite(config['dataset_dir'] + '/video_frame' + '/frame_%06d.jpg' % count, image)     # save frame as JPEG file      
-        success,image = vidcap.read() 
-        count += 1
-
-def colorspace(image):
-    """
-    Swap the B and R color channels of a truecolor image.
-    Use this if ras_type is RT_FORMAT_RGB (3), since 24-bit images
-    are saved by default using RT_STANDARD (1) which assumes BGR
-
-    @param image: The image array in RGB format
-    :type image:  Numpy Array (height, width, 3)
-
-    :rtype:  Numpy Array (height, width, 3)
-    :return: The new image array in BGR format
-    """
-
-    if image.ndim == 3 and image.shape[2] == 3:
-        return image[..., ::-1]
-
-
-def writeRas(image, filename, cmap=None):
-    """
-    Saves a numpy array as a Sun Raster image.
-    Only 8/24-bit images are supported.
- 
-    @param image: The array to save to disk
-    :type image:  Numpy Array
- 
-    @param filename: Path of raster file
-    :type filename:  String
- 
-    @param cmap: Save this 3x256 colormap for 8-bit images
-    :type cmap:  Numpy Array
- 
-    :raises: IOError, TypeError
-    """
- 
-    if image.ndim not in (2, 3):
-        raise TypeError("Only 8-bit and 24-bit rasters are supported")
- 
-    height = image.shape[0]
-    width = image.shape[1]
-    padding = (width % 2 != 0)
- 
-    depth = 8 if (image.ndim == 2) else 24
-    cmap = empty_raster_cmap() if (cmap is None and depth == 8) else cmap
- 
-    image = image.reshape(height, -1).astype(rasTypeA)
-    image = np.hstack((image, np.zeros((height, 1), dtype=rasTypeA))) if padding else image
- 
-    header = np.empty((8, 1), dtype=rasTypeH)
-    header[0] = rasMagic
-    header[1] = width
-    header[2] = height
-    header[3] = depth
-    header[4] = image.nbytes if image.nbytes < np.iinfo(rasTypeH).max else 0
-    header[5] = 1
-    header[6] = 0 if depth == 24 else 1
-    header[7] = 0 if depth == 24 else cmap.nbytes
- 
-    outfile = open(filename, 'wb')
-    header.tofile(outfile)
-    if cmap is not None:
-        cmap.tofile(outfile)
-    image.tofile(outfile)
-    outfile.close()
- 
-
-def empty_raster_cmap():
-    cmap = np.empty((3, 256), dtype=np.uint8)
-    cmap[:, ] = np.arange(256)
-    return cmap
-
-def readRas(filename, crop=None, mmap=False):
-    """
-    Reads a Sun Raster image into a numpy array.
-    Only 8/24-bit images are supported.
-
-    @param filename: Path of raster file
-    :type filename:  String
-
-    @param crop: Crop coordinates X Offset, Y Offset, Width, Height
-    :type crop: List of 4 Integers
-
-    :rtype:  tuple of ndarray
-    :return: (data, cmap) or (data, None)
-
-    :raises: IOError, TypeError
-    """
-
-    infile = open(filename, 'rb')
-    header = np.fromfile(infile, dtype=rasTypeH, count=8)
-
-    magic_num = header[0]
-    width = header[1]
-    height = header[2]
-    depth = header[3]
-    ras_type = header[5]
-    cmap_type = header[6]
-    cmap_len = header[7]
-
-    padding = (width % 2 != 0)
-    bpp = depth // 8
-    length = width * height * bpp
-    length += height if padding else 0
-
-    if magic_num != rasMagic:
-        raise TypeError("Input is not a valid Sun Raster Image")
-    if depth not in (8, 24):
-        raise TypeError("Only 8-bit and 24-bit rasters are supported")
-    if cmap_type not in (0, 1):
-        raise TypeError("Unsupported color map type")
-
-    if mmap:
-        if cmap_len:
-            cmap_raw = np.memmap(infile, dtype=rasTypeA, mode='r', offset=4 * 8 * np.dtype(rasTypeA).itemsize)
-            cmap = cmap_raw[:cmap_len].reshape(3, -1)
-        else:
-            cmap = None
-    else:
-        cmap = np.fromfile(infile, dtype=rasTypeA, count=cmap_len).reshape(3, -1) if cmap_len else None
-
-    # Handle cropping
-    if crop is not None:
-        cx, cy, cw, ch = list(map(int, crop))
-        if (cx + cw) > width or (cy + ch) > height or cx < 0 or cy < 0 or cw < 0 or ch < 0:
-            raise IOError("The specified crop coordinates are invalid")
-
-        height = ch
-        pad_len = ch if padding else 0
-        length = (ch * width * bpp) + pad_len
-        pad_len = cy if padding else 0
-        infile.seek((cy * width * bpp) + pad_len, os.SEEK_CUR)
-
-    if mmap:
-        if cmap_len:
-            offset = 4 * 8 * np.dtype(rasTypeA).itemsize + cmap_len
-        else:
-            offset = 4 * 8 * np.dtype(rasTypeA).itemsize
-        image_raw = np.memmap(infile, dtype=rasTypeA, mode='r', offset=offset)
-        image = image_raw[:length].reshape(height, -1)
-    else:
-        image = np.fromfile(infile, dtype=rasTypeA, count=length).reshape(height, -1)
-
-    if padding:
-        image = image[..., :-1]
-
-    if depth == 24:
-        image = image.reshape(height, -1, 3)
-        if ras_type == 3:
-            image = colorspace(image)
-
-    if crop:
-        image = image[:, cx:(cx + cw)]
-
-    infile.close()
-    return image, cmap
-
-def save_tiles(path, patch_size=512, stride=512, width=11361, height=10000, out_path=None, label=False):
-    """
-    Summary:
-        create overlap or non-overlap tiles from large rslc image
-    Arguments:
-        path (str): image path
-        patch_size (int): size of the patch image
-        stride (int): how many stride to take for each patch image
-    Return:
-        list holding all the patch image indices for a image
-    """
-    if label:
-        slc, cmap = readRas(path)
-    else:
-        slc = data_reader.readBin(path, width=width, dataType='floatComplex') # SLC(RSLC) image
-    
-    
-    pathlib.Path(out_path).mkdir(parents = True, exist_ok = True)
-    slc_id = path.split("/")[-1].split(".")[0].split("\\")[-1]
-    
-    # calculating number patch for given image
-    patch_height = int((slc.shape[0]-patch_size)/stride)+1 # [{(image height-patch_size)/stride}+1]
-    patch_width = int((slc.shape[1]-patch_size)/stride)+1 # [{(image width-patch_size)/stride}+1]
-    
-    pbar = ProgressBar()
-    # image column traverse
-    for i in pbar(range(patch_height)):
-        s_row = i*stride
-        e_row = s_row+patch_size
-        for j in range(patch_width):
-            start = (j*stride)
-            end = start+patch_size
-            tmp = slc[s_row:e_row, start:end]
-            if label:
-                f_name = out_path+slc_id+"_"+str(i)+"_"+str(j)+".ras"
-                writeRas(tmp, f_name, cmap)
-            else:
-                f_name = out_path+slc_id+"_"+str(i)+"_"+str(j)+".rslc"
-                data_reader.writeBin(f_name, tmp, "floatComplex")
-    
-    # if shape does not match with patch multiplication
-    if (patch_height*patch_size)<slc.shape[0]:
-        s_row = slc.shape[0]-patch_size
-        e_row = slc.shape[0]
-        for j in range(patch_width):
-            start = (j*stride)
-            end = start+patch_size
-            tmp = slc[s_row:e_row, start:end]
-            if label:
-                f_name = out_path+slc_id+"_"+str(patch_height)+"_"+str(j)+".ras"
-                writeRas(tmp, f_name, cmap)
-            else:
-                f_name = out_path+slc_id+"_"+str(patch_height)+"_"+str(j)+".rslc"
-                data_reader.writeBin(f_name, tmp, "floatComplex")
-    
-    if (patch_width*patch_size)<slc.shape[1]:
-        for i in range(patch_height):
-            s_row = i*stride
-            e_row = s_row+patch_size
-            start = slc.shape[1]-patch_size
-            end = slc.shape[1]
-            tmp = slc[s_row:e_row, start:end]
-            if label:
-                f_name = out_path+slc_id+"_"+str(i)+"_"+str(patch_width)+".ras"
-                writeRas(tmp, f_name, cmap)
-            else:
-                f_name = out_path+slc_id+"_"+str(i)+"_"+str(patch_width)+".rslc"
-                data_reader.writeBin(f_name, tmp, "floatComplex")
-        
 def data_path_split(config):
     
     """
@@ -402,71 +138,16 @@ def data_path_split(config):
         save file
     """
 
-    if not (os.path.exists((config['dataset_dir']+"tiles_path.csv"))):
-        
-        print("Creating tiles: ")
-        wid, hgt = 11361, 10820  # from the masterpar.xml
-        
-        rslcs = sorted(glob.glob(config["dataset_dir"]+"rslc/*.rslc.notopo"))
-        label = sorted(glob.glob(config["dataset_dir"]+"label/*.ras"))
-
-        data_paths = {}
-
-        assert len(rslcs)== len(label), "Invalid number of label or rslcs" # must have same number of rslc and label
-
-        for i in range(len(rslcs)-1):
-            out_path = config["dataset_dir"]+"rslc"+str(i)+"/"
-            save_tiles(rslcs[i], patch_size=config["height"], stride=config["height"], width=wid, height=hgt, out_path=(out_path+"features/"))
-            save_tiles(label[i], patch_size=config["height"], stride=config["height"], width=wid, height=hgt, out_path=(out_path+"label/"), label=True)
-            data_paths["rslc"+str(i)] = sorted(glob.glob((out_path+"features/*.rslc")))
-            data_paths["rslc"+str(i)+"_label"] = sorted(glob.glob((out_path+"label/*.ras")))
-    
-        df = pd.DataFrame(data_paths)
-        df.to_csv((config["dataset_dir"]+"tiles_path.csv"), index=False)
-    
     paths = pd.read_csv((config['dataset_dir']+"tiles_path.csv"))
     train, valid, test = data_split(paths, config)
 
     save_csv(train, config, "train.csv")
     save_csv(valid, config, "valid.csv")
     save_csv(test, config, "test.csv")
-    
-    
-def eval_data_path_split(config):
-    """
-    Summary:
-        for evaltion generate frame from video if video path is given and create csv file from testing folder
-    Arguments:
-        config (dict): Configuration directory
-    Return:
-        csv file
-    """
-    
-    data_path = config["dataset_dir"]
-    images = []
-    
-    # video is provided then it will generate frame from video
-    if config["video_path"] != 'None':
-        video_to_frame(config)
-        image_path = data_path + "/video_frame"
-        
-    else:
-        image_path = data_path
-        
-    image_names = os.listdir(image_path)
-    image_names = sorted(image_names)
-    
-    for i in image_names:
-        images.append(image_path + i)       # + "/" 
 
-    # creating dictionary for train, test and validation
-    eval = {'feature_ids': images, 'masks': images}
-
-    # saving dictionary as csv files
-    save_csv(eval, config, "eval.csv")
-    
 
 def class_percentage_check(label):
+    
     """
     Summary:
         check class percentage of a single mask image
@@ -475,16 +156,14 @@ def class_percentage_check(label):
     Return:
         dict object holding percentage of each class
     """
-    # calculating total pixels
+    
     total_pix = label.shape[0]*label.shape[0]
-    # get the total number of pixel labeled as 1
     class_one = np.sum(label)
-    # get the total number of pixel labeled as 0
     class_zero_p = total_pix-class_one
-    # return the pixel percent of each class
-    return {"zero_class": ((class_zero_p/total_pix)*100),
-            "one_class": ((class_one/total_pix)*100)
-            }
+    return {"zero_class":((class_zero_p/total_pix)*100),
+            "one_class":((class_one/total_pix)*100)
+    }
+
 
 
 def save_patch_idx(path, patch_size=256, stride=8, test=None, patch_class_balance=None):
@@ -498,62 +177,40 @@ def save_patch_idx(path, patch_size=256, stride=8, test=None, patch_class_balanc
     Return:
         list holding all the patch image indices for a image
     """
-    # read the image
+    
     img = readRas(path)[0] # SLC(RSLC) label
     img[img==255] = 1
-
+    
     # calculating number patch for given image
-    # [{(image height-patch_size)/stride}+1]
-    patch_height = int((img.shape[0]-patch_size)/stride) + 1
-    # [{(image weight-patch_size)/stride}+1]
-    patch_weight = int((img.shape[1]-patch_size)/stride) + 1
-
+    patch_height = int((img.shape[0]-patch_size)/stride)+1 # [{(image height-patch_size)/stride}+1]
+    patch_weight = int((img.shape[1]-patch_size)/stride)+1 # [{(image weight-patch_size)/stride}+1]
+    
     # total patch images = patch_height * patch_weight
     patch_idx = []
-
+    
     # image column traverse
-    for i in range(patch_height+1):
-        # get the start and end row index
+    for i in range(patch_height):
         s_row = i*stride
         e_row = s_row+patch_size
-        
-        if e_row > img.shape[0]:
-            s_row = img.shape[0] - patch_size
-            e_row = img.shape[0]
-        
         if e_row <= img.shape[0]:
-
+            
             # image row traverse
-            for j in range(patch_weight+1):
-                # get the start and end column index
+            for j in range(patch_weight):
                 start = (j*stride)
                 end = start+patch_size
-                
-                if end > img.shape[1]:
-                    start = img.shape[1] - patch_size
-                    end = img.shape[1]
-                
                 if end <= img.shape[1]:
-                    tmp = img[s_row:e_row, start:end]  # slicing the image
-                    percen = class_percentage_check(
-                        tmp)  # find class percentage
-
+                    tmp = img[s_row:e_row, start:end]
+                    percen = class_percentage_check(tmp) # find class percentage
+                    
                     # take all patch for test images
-                    if not patch_class_balance or test == 'test':
+                    if patch_class_balance or test=='test':
                         patch_idx.append([s_row, e_row, start, end])
-
+                    
                     # store patch image indices based on class percentage
                     else:
-                        if percen["one_class"] > 19.0:
+                        if percen["one_class"]>2.0:
                             patch_idx.append([s_row, e_row, start, end])
-                            
-                if end==img.shape[1]:
-                    break
-            
-        if e_row==img.shape[0]:
-            break  
-            
-    return patch_idx
+    return  patch_idx
 
 
 def write_json(target_path, target_file, data):
@@ -567,14 +224,14 @@ def write_json(target_path, target_file, data):
     Returns:
         save json file
     """
-    # check for target directory
+    
+    
     if not os.path.exists(target_path):
         try:
-            os.makedirs(target_path)  # making target directory
+            os.makedirs(target_path)
         except Exception as e:
             print(e)
             raise
-    # writing the jason file
     with open(os.path.join(target_path, target_file), 'w') as f:
         json.dump(data, f)
 
@@ -613,8 +270,6 @@ def patch_images(data, config, name):
 
 # Data Augment class
 # ----------------------------------------------------------------------------------------------
-
-
 class Augment:
     def __init__(self, batch_size, channels, ratio=0.3, seed=42):
         super().__init__()
@@ -671,11 +326,12 @@ class Augment:
         return features, labels, labels2
 
 
+
 # Dataloader class
 # ----------------------------------------------------------------------------------------------
 
 class MyDataset(Sequence):
-    
+
     def __init__(self, data, in_channels, 
                  batch_size, num_class, patchify,transform_fn=None,
                  augment=None, weights=None, patch_idx=None, tile_width=512):
@@ -774,7 +430,6 @@ class MyDataset(Sequence):
             return tf.convert_to_tensor(inputs), [y_weights, y_weights2]
 
         return inputs, [masks, masks2]
-        # return inputs, inputs
         # return {"input_1": inputs,
         # "out1": masks,
         # "out2": masks2}
@@ -823,6 +478,7 @@ class MyDataset(Sequence):
         return tf.convert_to_tensor(inputs), tf.convert_to_tensor(masks), tf.convert_to_tensor(masks2), idx
 
 
+
 def get_train_val_dataloader(config):
     """
     Summary:
@@ -832,43 +488,35 @@ def get_train_val_dataloader(config):
     Return:
         train and valid dataloader
     """
-    # creating csv files for train, test and validation
+
+
     if not (os.path.exists(config['train_dir'])):
         data_path_split(config)
-    # creating jason files for train, test and validation
+    
     if not (os.path.exists(config["p_train_dir"])) and config['patchify']:
         print("Saving patchify indices for train and test.....")
-
-        # for training
-        data = pd.read_csv(config['train_dir'])
-
+        train_data = pd.read_csv(config['train_dir'])
+        valid_data = pd.read_csv(config['valid_dir'])
+        
         if config["patch_class_balance"]:
-            patch_images(data, config, "train_patch_phr_cb_")
+            patch_images(train_data, config, "train_patch_WOC_")
+            patch_images(valid_data, config, "valid_patch_WOC_")
         else:
-            patch_images(data, config, "train_patch_phr_")
+            patch_images(train_data, config, "train_patch_")
+            patch_images(valid_data, config, "valid_patch_")
 
-        # for validation
-        data = pd.read_csv(config['valid_dir'])
-
-        if config["patch_class_balance"]:
-            patch_images(data, config, "valid_patch_phr_cb_")
-        else:
-            patch_images(data, config, "valid_patch_phr_")
-    # initializing train, test and validatinn for patch images
+        
     if config['patchify']:
         print("Loading Patchified features and masks directories.....")
         with open(config['p_train_dir'], 'r') as j:
             train_dir = json.loads(j.read())
         with open(config['p_valid_dir'], 'r') as j:
             valid_dir = json.loads(j.read())
-         
-        # selecting which dataset to train and validate   
         train_idx = train_dir['patch_idx']
         valid_idx = valid_dir['patch_idx']
         train_dir = pd.DataFrame.from_dict(train_dir)
         valid_dir = pd.DataFrame.from_dict(valid_dir)
-        
-    # initializing train, test and validatinn for images
+
     else:
         print("Loading features and masks directories.....")
         train_dir = pd.read_csv(config['train_dir'])
@@ -879,32 +527,32 @@ def get_train_val_dataloader(config):
     print("train Example : {}".format(len(train_dir)))
     print("valid Example : {}".format(len(valid_dir)))
 
+
     # create Augment object if augment is true
-    if config['augment'] and config['batch_size'] > 1:
+    if config['augment'] and config['batch_size']>1:
         augment_obj = Augment(config['batch_size'], config['in_channels'])
-        # new batch size after augment data for train
-        n_batch_size = config['batch_size']-augment_obj.aug_img_batch
+        n_batch_size = config['batch_size']-augment_obj.aug_img_batch # new batch size after augment data for train
     else:
         n_batch_size = config['batch_size']
         augment_obj = None
 
-    # get the class weight if weights is true
+    # class weight
     if config['weights']:
-        weights = tf.constant(config['balance_weights'])
+        weights=tf.constant(config['balance_weights'])
     else:
         weights = None
-
+    
     # create dataloader object
     train_dataset = MyDataset(train_dir,
                                 in_channels=config['in_channels'], patchify=config['patchify'],
                                 batch_size=n_batch_size, transform_fn=transform_data, 
                                 num_class=config['num_classes'], augment=augment_obj, 
-                                weights=weights, patch_idx=train_idx, tile_width=config["height"])
+                                weights=weights, patch_idx=train_idx, tile_width=config["tile_width"])
 
     val_dataset = MyDataset(valid_dir,
                             in_channels=config['in_channels'],patchify=config['patchify'],
                             batch_size=config['batch_size'], transform_fn=transform_data, 
-                            num_class=config['num_classes'],patch_idx=valid_idx, tile_width=config["height"])
+                            num_class=config['num_classes'],patch_idx=valid_idx, tile_width=config["tile_width"])
     
     return train_dataset, val_dataset
 
@@ -918,101 +566,97 @@ def get_test_dataloader(config):
     Return:
         test dataloader
     """
-    if config["evaluation"]:
-        var_list = ["eval_dir", "p_eval_dir"]
-        patch_name = "eval_patch_phr_cb_"
-    else:
-        var_list = ["test_dir", "p_test_dir"]
-        patch_name = "test_patch_"+ config["experiment"] +"_"
-        
-    # print(var_list)
-        
-    if not (os.path.exists(config[var_list[0]])):
-        if config["evaluation"]:
-            eval_data_path_split(config)
-        else:
-            data_path_split(config)
 
-    if not (os.path.exists(config[var_list[1]])) and config['patchify']:
+
+    if not (os.path.exists(config['test_dir'])):
+        data_path_split(config)
+    
+    if not (os.path.exists(config["p_test_dir"])) and config['patchify']:
         print("Saving patchify indices for test.....")
-        data = pd.read_csv(config[var_list[0]])
-        patch_images(data, config, patch_name)
-
+        data = pd.read_csv(config['test_dir'])
+        patch_images(data, config, "test_patch_")
+        
+    
     if config['patchify']:
         print("Loading Patchified features and masks directories.....")
-        with open(config[var_list[1]], 'r') as j:
-            test_dir = json.loads(j.read()) 
-        
+        with open(config['p_test_dir'], 'r') as j:
+            test_dir = json.loads(j.read())
+        test_features = test_dir['feature_ids']
+        test_masks = test_dir['masks']
         test_idx = test_dir['patch_idx']
-        test_dir = pd.DataFrame.from_dict(test_dir)
+    
     else:
         print("Loading features and masks directories.....")
+        test_dir = pd.read_csv(config['test_dir'])
+        test_features = test_dir.feature_ids.values
+        test_masks = test_dir.masks.values
         test_idx = None
-        test_dir = pd.read_csv(config[var_list[0]])
 
-    print("test/evaluation Example : {}".format(len(test_dir)))
+    print("test Example : {}".format(len(test_features)))
 
-    test_dataset = MyDataset(test_dir,
-                             in_channels=config['in_channels'], patchify=config['patchify'],
-                             batch_size=config['batch_size'], transform_fn=transform_data,
-                             num_class=config['num_classes'], patch_idx=test_idx, tile_width=config["height"])
 
+    test_dataset = MyDataset(test_features,
+                            in_channels=config['in_channels'],patchify=config['patchify'],
+                            batch_size=config['batch_size'], transform_fn=transform_data, 
+                            num_class=config['num_classes'],patch_idx=test_idx)
+    
     return test_dataset
 
 
 
+import yaml
+from datetime import datetime
+def get_config_yaml(path, args):
+    """
+    Summary:
+        parsing the config.yaml file and re organize some variables
+    Arguments:
+        path (str): config.yaml file directory
+        args (dict): dictionary of passing arguments
+    Return:
+        a dictonary
+    """
+    with open(path, "r") as f:
+      config = yaml.safe_load(f)
+    
+    # Replace default values with passing values
+    for key in args.keys():
+        if args[key] != None:
+            config[key] = args[key]
+            
+    config['height'] = config['patch_size']
+    config['width'] = config['patch_size']
+    
+    # Merge paths
+    config['train_dir'] = config['dataset_dir']+config['train_dir']
+    config['valid_dir'] = config['dataset_dir']+config['valid_dir']
+    config['test_dir'] = config['dataset_dir']+config['test_dir']
+    
+    config['p_train_dir'] = config['dataset_dir']+config['p_train_dir']
+    config['p_valid_dir'] = config['dataset_dir']+config['p_valid_dir']
+    config['p_test_dir'] = config['dataset_dir']+config['p_test_dir']
+    
+    # Create Callbacks paths
+    config['tensorboard_log_name'] = "{}_ex_{}_epochs_{}_{}".format(config['model_name'],config['experiment'],config['epochs'],datetime.now().strftime("%d-%b-%y"))
+    config['tensorboard_log_dir'] = config['root_dir']+'/logs/'+config['model_name']+'/'
 
-if __name__ == '__main__':
-    
-    train_dir = pd.read_csv("/home/mdsamiul/github_project/waterbody_segmentation_complex_data/data/train.csv")
-    valid_dir = pd.read_csv("/home/mdsamiul/github_project/waterbody_segmentation_complex_data/data/valid.csv")
+    config['csv_log_name'] = "{}_ex_{}_epochs_{}_{}.csv".format(config['model_name'],config['experiment'],config['epochs'],datetime.now().strftime("%d-%b-%y"))
+    config['csv_log_dir'] = config['root_dir']+'/csv_logger/'+config['model_name']+'/'
 
-    train_dataset = MyDataset(train_dir,
-                                in_channels=2, patchify=False,
-                                batch_size=10, transform_fn=transform_data, 
-                                num_class=2, augment=None, 
-                                weights=None, patch_idx=None, tile_width=512)
+    config['checkpoint_name'] = "{}_ex_{}_epochs_{}_{}.hdf5".format(config['model_name'],config['experiment'],config['epochs'],datetime.now().strftime("%d-%b-%y"))
+    config['checkpoint_dir'] = config['root_dir']+'/model/'+config['model_name']+'/'
+
+    # Create save model directory
+    if config['load_model_dir']=='None':
+        config['load_model_dir'] = config['root_dir']+'/model/'+config['model_name']+'/'
     
-    #x, y = train_dataset.__getitem__(1)
-    # for batch in train_dataset:
-    #     x, y = batch
-    #     break
-    # print(type(x))
-    # print(tf.shape(x))
-    # print(type(y))
-    # print(tf.shape(y))
-    # print(train_dataset.__len__())
+    # Create Evaluation directory
+    config['prediction_test_dir'] = config['root_dir']+'/prediction/'+config['model_name']+'/test/'
+    config['prediction_val_dir'] = config['root_dir']+'/prediction/'+config['model_name']+'/validation/'
     
-    # for x,y in train_dataset:
-    #     print(type(x))
-    #     print(x.shape)
-    #     print(type(y))
-    #     print(y[0].shape)
-    #     print(y[1].shape)
-    #     break
-    
-    # import matplotlib.pyplot as plt
-    # for x,y in train_dataset:
-    #     plt.subplot(1, 2, 1)
-    #     plt.imshow(x[0][0])
-    #     plt.subplot(1, 2, 2)
-    #     plt.imshow(y[0][0])
-    #     break
-    # import matplotlib.pyplot as plt
-    # import earthpy.plot as ep
-    # import earthpy.spatial as es
-    # ax = plt.gca()
-    # hillshade = es.hillshade( x, azimuth=180)
-    # ep.plot_bands(
-    #     x,
-    #     cbar=False,
-    #     cmap="terrain",
-    #     title=title[i],
-    #     ax=ax
-    #     )
-    
-    # for x,y in train_dataset:
-    #     print(y[0][1].shape)
-    #     ab = np.argmax([y[0][1]], axis=3)[0]
-    #     print(ab.shape)
-    #     break
+    config['visualization_dir'] = config['root_dir']+'/visualization/'
+
+    return config
+
+config = get_config_yaml('config.yaml', {})
+train_dataset, val_dataset = get_train_val_dataloader(config)

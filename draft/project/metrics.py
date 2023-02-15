@@ -62,10 +62,11 @@ def get_metrics(config):
     
     m = MyMeanIOU(config['num_classes'])
     return {
-            'MeanIoU': m,
-            'F1':sm.metrics.f1_score,
-            'Pre':sm.metrics.precision,
-            'Rec':sm.metrics.recall,
-            'dice_coef':dice_coef_score
+            'my_mean_iou': m,
+            'f1_score':sm.metrics.f1_score,
+            'precision':sm.metrics.precision,
+            'recall':sm.metrics.recall,
+            'dice_coef_score':dice_coef_score
             #'cat_acc':cat_acc # reduce mean_iou
-    }
+          }
+#metrics = ['acc']

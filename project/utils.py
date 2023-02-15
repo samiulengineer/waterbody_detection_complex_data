@@ -1,19 +1,21 @@
 import os
 import json
 import math
-import yaml
 import glob
+import random
+import pathlib
 import numpy as np
 import pandas as pd
-import pathlib
-from loss import *
 import tensorflow as tf
 import earthpy.plot as ep
-import earthpy.spatial as es
 from tensorflow import keras
-from sklearn.preprocessing import MinMaxScaler
+import earthpy.spatial as es
 from datetime import datetime
 import matplotlib.pyplot as plt
+from sklearn.preprocessing import MinMaxScaler
+import moviepy.video.io.ImageSequenceClip
+
+from loss import *
 from dataset import read_img, transform_data
 
 
@@ -49,7 +51,8 @@ class SelectCallbacks(keras.callbacks.Callback):
         """
         drop = 0.5
         epoch_drop = self.config['epochs'] / 8.
-        lr = self.config['learning_rate'] * math.pow(drop, math.floor((1 + epoch) / epoch_drop))
+        lr = self.config['learning_rate'] * \
+            math.pow(drop, math.floor((1 + epoch) / epoch_drop))
         return lr
 
     def on_epoch_end(self, epoch, logs={}):
@@ -61,8 +64,12 @@ class SelectCallbacks(keras.callbacks.Callback):
         Output:
             save predict mask
         """
-        if (epoch % self.config['val_plot_epoch'] == 0): # every after certain epochs the model will predict mask
-            show_predictions(self.val_dataset, self.model, self.config, True)
+        if (epoch % self.config['val_plot_epoch'] == 0):  # every after certain epochs the model will predict mask
+            # save image/images with their mask, pred_mask and accuracy
+            if self.config['patchify']:
+                val_show_predictions(self.val_dataset, self.model, self.config)
+            else:
+                show_predictions(self.val_dataset, self.model, self.config, val=True)
 
     def get_callbacks(self, val_dataset, model):
         """
@@ -74,25 +81,32 @@ class SelectCallbacks(keras.callbacks.Callback):
         Return:
             list of callbacks
         """
-        if self.config['csv']:
-            self.callbacks.append(keras.callbacks.CSVLogger(os.path.join(self.config['csv_log_dir'], self.config['csv_log_name']), separator = ",", append = False))
-        
-        if self.config['checkpoint']:
-            self.callbacks.append(keras.callbacks.ModelCheckpoint(os.path.join(self.config['checkpoint_dir'], self.config['checkpoint_name']), save_best_only = True))
-        
-        if self.config['tensorboard']:
-            self.callbacks.append(keras.callbacks.TensorBoard(log_dir = os.path.join(self.config['tensorboard_log_dir'], self.config['tensorboard_log_name'])))
-        
-        if self.config['lr']:
-            self.callbacks.append(keras.callbacks.LearningRateScheduler(schedule = self.lr_scheduler))
-        
-        if self.config['early_stop']:
-            self.callbacks.append(keras.callbacks.EarlyStopping(monitor = 'my_mean_iou', patience = self.config['patience']))
-        
-        if self.config['val_pred_plot']:
-            self.callbacks.append(SelectCallbacks(val_dataset, model, self.config))
-        
+        if self.config['csv']:  # save all type of accuracy in a csv file for each epoch
+            self.callbacks.append(keras.callbacks.CSVLogger(os.path.join(
+                self.config['csv_log_dir'], self.config['csv_log_name']), separator=",", append=False))
+
+        if self.config['checkpoint']:  # save the best model
+            self.callbacks.append(keras.callbacks.ModelCheckpoint(os.path.join(
+                self.config['checkpoint_dir'], self.config['checkpoint_name']), save_best_only=True))
+
+        if self.config['tensorboard']:  # Enable visualizations for TensorBoard
+            self.callbacks.append(keras.callbacks.TensorBoard(log_dir=os.path.join(
+                self.config['tensorboard_log_dir'], self.config['tensorboard_log_name'])))
+
+        if self.config['lr']:  # adding learning rate scheduler
+            self.callbacks.append(
+                keras.callbacks.LearningRateScheduler(schedule=self.lr_scheduler))
+
+        if self.config['early_stop']:  # early stop the training if there is no change in loss
+            self.callbacks.append(keras.callbacks.EarlyStopping(
+                monitor='my_mean_iou', patience=self.config['patience']))
+
+        if self.config['val_pred_plot']:  # plot validated image for each epoch
+            self.callbacks.append(SelectCallbacks(
+                val_dataset, model, self.config))
+
         return self.callbacks
+
 
 # Prepare masks
 # ----------------------------------------------------------------------------------------------
@@ -111,32 +125,18 @@ def create_mask(mask, pred_mask):
     return mask, pred_mask
 
 
-
 # Sub-ploting and save
 # ----------------------------------------------------------------------------------------------
 
-def display(display_list, idx, directory, exp):
-    """
-    Summary:
-        save all images into single figure
-    Arguments:
-        display_list (dict): a python dictionary key is the title of the figure
-        idx (int) : image index in dataset object
-        directory (str) : path to save the plot figure
-        score (float) : accuracy of the predicted mask
-        exp (str): experiment name
-    Return:
-        save images figure into directory
-    """
-    scaler = MinMaxScaler((0.0,0.9999999))
-    plt.figure(figsize=(12, 20))
-    title = list(display_list.keys())
+def display(display_list, idx, directory, score, exp, evaluation=False, visualize=False):
+    
+    plt.figure(figsize=(12, 8))  # set the figure size
+    title = list(display_list.keys())  # get tittle
 
+    # plot all the image in a subplot
     for i in range(len(display_list)):
         plt.subplot(1, len(display_list), i+1)
-            
-        # plot dem channel using earthpy
-        if title[i]=="dem":
+        if title[i] == "DEM":  # for plot nasadem image channel
             ax = plt.gca()
             hillshade = es.hillshade(display_list[title[i]], azimuth=180)
             ep.plot_bands(
@@ -147,9 +147,26 @@ def display(display_list, idx, directory, exp):
                 ax=ax
             )
             ax.imshow(hillshade, cmap="Greys", alpha=0.5)
-            
+        elif title[i] == "VV" or title[i] == "VH":  # for plot VV or VH image channel
+            plt.title(title[i])
+            plt.imshow((display_list[title[i]]))
+            plt.axis('off')
+        elif 'Prediction' in title[i]:       # for ploting prediction mask on input image
+            plt.title(title[i])
+            masked = np.ma.masked_where(display_list[title[i]] == 0, display_list[title[i]])
+            plt.imshow(display_list["image"], 'gray', interpolation='none')
+            plt.imshow(masked, 'jet', interpolation='none', alpha=0.8)
+            plt.axis('off')
         # gray image plot rslc
         elif title[i]=="rslc1" or title[i]=="rslc2":
+            plt.title(title[i], fontsize=6)
+            c2 = plt.imshow((display_list[title[i]])**0.3, cmap="gray", interpolation=None)
+            ax = plt.gca()
+            fig = plt.gcf()
+            cbar = fig.colorbar(c2, ax=ax, fraction=0.046)
+            cbar.ax.tick_params(labelsize=6) 
+            plt.axis('off')
+        elif title[i]=="rslc1_label" or title[i]=="rslc2_label":
             plt.title(title[i], fontsize=6)
             c2 = plt.imshow((display_list[title[i]])**0.3, cmap="gray", interpolation=None)
             ax = plt.gca()
@@ -178,11 +195,123 @@ def display(display_list, idx, directory, exp):
             cbar.ax.tick_params(labelsize=6) 
             plt.axis('off')
 
-    prediction_name = "img_ex_{}_{}.png".format(exp, idx) # create file name to save
-    plt.savefig(os.path.join(directory, prediction_name), bbox_inches='tight', dpi=800)
+    # create file name to save
+    if evaluation:
+        prediction_name = "{}_{}.png".format(exp, idx)
+    elif visualize:
+        prediction_name = "img_id_{}.png".format(idx)
+    else:
+        prediction_name = "{}_{}_miou_{:.4f}.png".format(exp, idx, score) 
+    
+    plt.savefig(os.path.join(directory, prediction_name),
+                bbox_inches='tight', dpi=800)  # save all the figures
     plt.clf()
     plt.cla()
     plt.close()
+    
+    
+def display_label(img, img_path, directory):
+    """
+    Summary:
+        save only predicted labels
+    Arguments:
+        img (np.array): predicted label
+        img_path (str) : source image path
+        directory (str): saving directory
+    Return:
+        save images figure into directory
+    """
+    
+    img_path_split = os.path.split(img_path)
+    
+    if 'umm_' in img_path_split[1]:
+        img_name = img_path_split[1][ : 4] + 'road_' + img_path_split[1][4 : ]
+    elif 'um_' in img_path_split[1]:
+        img_name = img_path_split[1][ : 3] + 'lane_' + img_path_split[1][3 : ]
+    else:
+        img_name = img_path_split[1][ : 3] + 'road_' + img_path_split[1][3 : ]
+    
+    plt.imsave(directory+'/'+img_name, img)
+    
+
+# Combine patch images and save
+# ----------------------------------------------------------------------------------------------
+
+# plot single will not work here
+def patch_show_predictions(dataset, model, config):
+    """
+    Summary:
+        predict patch images and merge together during test and evaluation
+    Arguments:
+        dataset (object): MyDataset class object
+        model (object): keras.Model class object
+        config (dict): configuration dictionary
+    Return:
+        merged patch image
+    """
+    
+    # predict patch images and merge together
+    if config["evaluation"]:
+        var_list = ["eval_dir", "p_eval_dir"]
+    else:
+        var_list = ["test_dir", "p_test_dir"]
+
+    with open(config[var_list[1]], 'r') as j:  # opening the json file
+        patch_dir = json.loads(j.read())
+
+    df = pd.DataFrame.from_dict(patch_dir)  # read as panadas dataframe
+    full_img_dir = pd.read_csv(config[var_list[0]])  # get the csv file
+    total_score = 0.0
+
+    # loop to traverse full dataset
+    for i in range(len(full_img_dir)):
+        # get tiles size
+        mask_size = config["height"]
+        # for same mask directory get the index
+        idx = df[df["rslc0_label"] == full_img_dir["rslc0_label"][i]].index
+
+        # construct a single full image from prediction patch images
+        pred_full_label1 = np.zeros((mask_size, mask_size), dtype=int)
+        pred_full_label2 = np.zeros((mask_size, mask_size), dtype=int)
+        for j in idx:
+            p_idx = patch_dir["patch_idx"][j]
+            feature, _, _, _ = dataset.get_random_data(j)
+            pred1, pred2 = model.predict(feature)
+            pred1 = np.argmax(pred1, axis=3)
+            pred2 = np.argmax(pred2, axis=3)
+            pred_full_label1[p_idx[0]:p_idx[1], p_idx[2]:p_idx[3]] = pred1[0] 
+            pred_full_label2[p_idx[0]:p_idx[1], p_idx[2]:p_idx[3]] = pred2[0]   # [start hig: end index, ]
+
+        # get full feature image and mask
+        full_feature , full_mask1, full_mask2 = read_img(full_img_dir.iloc[i])
+        
+        # calculate keras MeanIOU score
+        m1 = keras.metrics.MeanIoU(num_classes=config['num_classes'])
+        m2 = keras.metrics.MeanIoU(num_classes=config['num_classes'])
+        m1.update_state(full_mask1, pred_full_label1)
+        m2.update_state(full_mask2, pred_full_label2)
+        score1 = m1.result().numpy()
+        score2 = m2.result().numpy()
+        total_score = (score1 + score2) / 2
+
+        # plot and saving image
+        if config["evaluation"]:
+            # display({"image": feature_img,      # change in the key "image" will have to change in the display
+            #          #"mask": pred_full_label,
+            #      "Prediction": pred_full_label
+            #      }, i, config['prediction_eval_dir'], score, config['experiment'], config["evaluation"])
+            
+            # use this function only to save predicted image
+            display_label(pred_full_label1, full_img_dir.iloc[i], config['prediction_eval_dir'])
+        else:
+            display({"RSLC1 AMP": full_feature[:,:,0],
+                    "RSLC2 AMP ": full_feature[:,:,1],
+                    "IFG": full_feature[:,:,2],
+                    "RSLC1 Mask": full_mask1,
+                    "RSLC2 Mask": full_mask2,
+                    "RSLC1 (MeanIOU_{:.4f})".format(score1): pred_full_label1,
+                    "RSLC2 (MeanIOU_{:.4f})".format(score2): pred_full_label2
+                    }, i, config['prediction_val_dir'], total_score, config['experiment'])
 
 
 # Save all plot figures
@@ -233,85 +362,78 @@ def show_predictions(dataset, model, config, val=False):
                       "RSLC2 Mask": mask2[i],
                       "RSLC1 (MeanIOU_{:.4f})".format(score1): pred_mask1[i],
                       "RSLC2 (MeanIOU_{:.4f})".format(score2): pred_mask2[i]
-                      }, idx, directory, config['experiment'])
+                      }, idx, directory, 0, config['experiment'])
             idx += 1
-
-# Combine patch images and save
+            
+            
+# validation full image plot
 # ----------------------------------------------------------------------------------------------
-def patch_show_predictions(dataset, model, config):
-    # predict patch images and merge together 
-    
-    with open(config['p_test_dir'], 'r') as j:
-        patch_test_dir = json.loads(j.read())
-    
-    df = pd.DataFrame.from_dict(patch_test_dir)
-    test_dir = pd.read_csv(config['test_dir'])
-    total_score = 0.0
-    
-    # loop to traverse full dataset
-    for i in range(len(test_dir)):
-        idx = df[df["masks"]==test_dir["masks"][i]].index
-        
-        # construct a single full image from prediction patch images
-        pred_full_label = np.zeros((512,512), dtype=int)
-        for j in idx:
-            p_idx = patch_test_dir["patch_idx"][j]
-            feature, mask, _ = dataset.get_random_data(j)
-            pred_mask = model.predict(feature)
-            pred_mask = np.argmax(pred_mask, axis = 3)
-            pred_full_label[p_idx[0]:p_idx[1], p_idx[2]:p_idx[3]] = pred_mask[0]
-        
-        
-        # read original image and mask
-        feature = read_img(test_dir["feature_ids"][i], in_channels=config['in_channels'])
-        mask = transform_data(read_img(test_dir["masks"][i], label=True), config['num_classes'])
-        
-        # calculate keras MeanIOU score
-        m = keras.metrics.MeanIoU(num_classes=config['num_classes'])
-        m.update_state(np.argmax([mask], axis = 3), [pred_full_label])
-        score = m.result().numpy()
-        total_score += score
-        
-        # plot and saving image
-        display({"VV": feature[:,:,0],
-                    "VH": feature[:,:,1],
-                    "DEM": feature[:,:,2],
-                    "Mask": np.argmax([mask], axis = 3)[0],
-                    "Prediction (MeanIOU_{:.4f})".format(score): pred_full_label
-                    }, i, config['prediction_test_dir'], score, config['experiment'])
-
-
-# GPU setting
-# ----------------------------------------------------------------------------------------------
-def set_gpu(gpus):
+def val_show_predictions(dataset, model, config):
     """
     Summary:
-        setting multi-GPUs or single-GPU strategy for training
+        predict patch images and merge together during training
     Arguments:
-        gpus (str): comma separated str variable i.e. "0,1,2"
+        dataset (object): MyDataset class object
+        model (object): keras.Model class object
+        config (dict): configuration dictionary
     Return:
-        gpu strategy object
+        merged patch image
     """
-    gpus = gpus.split(",")
-    if len(gpus)>1:
-        print("MirroredStrategy Enable")
-        GPUS = []
-        for i in range(len(gpus)):
-            GPUS.append("GPU:{}".format(gpus[i]))
-        strategy = tf.distribute.MirroredStrategy(GPUS)
-    else:
-        print("OneDeviceStrategy Enable")
-        GPUS = []
-        for i in range(len(gpus)):
-            GPUS.append("GPU:{}".format(gpus[i]))
-        strategy = tf.distribute.OneDeviceStrategy(GPUS[0])
-    print('Number of devices: %d' % strategy.num_replicas_in_sync)
+    var_list = ["valid_dir", "p_valid_dir"]
+
+    with open(config[var_list[1]], 'r') as j:  # opening the json file
+        patch_dir = json.loads(j.read())
+
+    df = pd.DataFrame.from_dict(patch_dir)  # read as panadas dataframe
+    full_img_dir = pd.read_csv(config[var_list[0]])  # get the csv file
+
+    i = random.randint(0, len(full_img_dir))
+    # get tiles size
+    mask_size = config["height"]
+    # for same mask directory get the index
+    idx = df[df["rslc0_label"] == full_img_dir["rslc0_label"][i]].index
+
+    # construct a single full image from prediction patch images
+    pred_full_label1 = np.zeros((mask_size, mask_size), dtype=int)
+    pred_full_label2 = np.zeros((mask_size, mask_size), dtype=int)
+    for j in idx:
+        p_idx = patch_dir["patch_idx"][j]
+        feature, _, _, indexNum = dataset.get_random_data(j)
+        pred1, pred2 = model.predict(feature)
+        pred1 = np.argmax(pred1, axis=3)
+        pred2 = np.argmax(pred2, axis=3)
+        pred_full_label1[p_idx[0]:p_idx[1], p_idx[2]:p_idx[3]] = pred1[0] 
+        pred_full_label2[p_idx[0]:p_idx[1], p_idx[2]:p_idx[3]] = pred2[0]
+        
     
-    return strategy
+    # get full feature image and mask
+    full_feature , full_mask1, full_mask2 = read_img(full_img_dir.iloc[i])
+    
+    # calculate keras MeanIOU score
+    m1 = keras.metrics.MeanIoU(num_classes=config['num_classes'])
+    m2 = keras.metrics.MeanIoU(num_classes=config['num_classes'])
+    m1.update_state(full_mask1, pred_full_label1)
+    m2.update_state(full_mask2, pred_full_label2)
+    score1 = m1.result().numpy()
+    score2 = m2.result().numpy()
+    total_score = (score1 + score2) / 2
+
+    # plot and saving image
+        
+    display({"RSLC1 AMP": full_feature[:,:,0],
+            "RSLC2 AMP ": full_feature[:,:,1],
+            "IFG": full_feature[:,:,2],
+            "RSLC1 Mask": full_mask1,
+            "RSLC2 Mask": full_mask2,
+            "RSLC1 (MeanIOU_{:.4f})".format(score1): pred_full_label1,
+            "RSLC2 (MeanIOU_{:.4f})".format(score2): pred_full_label2
+            }, indexNum, config['prediction_val_dir'], total_score, config['experiment'])
+
 
 # Model Output Path
 # ----------------------------------------------------------------------------------------------
-def create_paths(config, test=False):
+
+def create_paths(config, test=False, eval=False):
     """
     Summary:
         creating paths for train and test if not exists
@@ -322,196 +444,131 @@ def create_paths(config, test=False):
         create directories
     """
     if test:
-        pathlib.Path(config['prediction_test_dir']).mkdir(parents = True, exist_ok = True)
+        pathlib.Path(config['prediction_test_dir']).mkdir(
+            parents=True, exist_ok=True)
+    if eval:
+        if config["video_path"] != 'None':
+            pathlib.Path(config["dataset_dir"] + "/video_frame").mkdir(
+                parents=True, exist_ok=True)
+        pathlib.Path(config['prediction_eval_dir']).mkdir(
+            parents=True, exist_ok=True)
     else:
-        pathlib.Path(config['csv_log_dir']).mkdir(parents = True, exist_ok = True)
-        pathlib.Path(config['tensorboard_log_dir']).mkdir(parents = True, exist_ok = True)
-        pathlib.Path(config['checkpoint_dir']).mkdir(parents = True, exist_ok = True)
-        pathlib.Path(config['prediction_val_dir']).mkdir(parents = True, exist_ok = True)
+        pathlib.Path(config['csv_log_dir']
+                     ).mkdir(parents=True, exist_ok=True)
+        pathlib.Path(config['tensorboard_log_dir']).mkdir(
+            parents=True, exist_ok=True)
+        pathlib.Path(config['checkpoint_dir']).mkdir(
+            parents=True, exist_ok=True)
+        pathlib.Path(config['prediction_val_dir']).mkdir(
+            parents=True, exist_ok=True)
 
 # Create config path
 # ----------------------------------------------------------------------------------------------
-def get_config_yaml(path, args):
+
+# def get_config_yaml(path, args):
+#     """
+#     Summary:
+#         parsing the config.yaml file and re organize some variables
+#     Arguments:
+#         path (str): config.yaml file directory
+#         args (dict): dictionary of passing arguments
+#     Return:
+#         a dictonary
+#     """
+#     with open(path, "r") as f:
+#         config = yaml.safe_load(f)
+
+#     # Replace default values with passing values
+#     for key in args.keys():
+#         if args[key] != None:
+#             config[key] = args[key]
+
+#     if config['patchify']:
+#         config['height'] = config['patch_size']
+#         config['width'] = config['patch_size']
+
+#     # Merge paths
+#     config['train_dir'] = config['dataset_dir']+config['train_dir']
+#     config['valid_dir'] = config['dataset_dir']+config['valid_dir']
+#     config['test_dir'] = config['dataset_dir']+config['test_dir']
+#     config['eval_dir'] = config['dataset_dir']+config['eval_dir']
+
+#     config['p_train_dir'] = config['dataset_dir']+config['p_train_dir']
+#     config['p_valid_dir'] = config['dataset_dir']+config['p_valid_dir']
+#     config['p_test_dir'] = config['dataset_dir']+config['p_test_dir']
+#     config['p_eval_dir'] = config['dataset_dir']+config['p_eval_dir']
+
+#     # Create Callbacks paths
+#     config['tensorboard_log_name'] = "{}_ex_{}_ep_{}_{}".format(
+#         config['model_name'], config['experiment'], config['epochs'], datetime.now().strftime("%d-%b-%y"))
+#     config['tensorboard_log_dir'] = config['root_dir'] + \
+#         '/logs/' + \
+#         config['model_name']+'/'  
+
+#     config['csv_log_name'] = "{}_ex_{}_ep_{}_{}.csv".format(
+#         config['model_name'], config['experiment'], config['epochs'], datetime.now().strftime("%d-%b-%y"))
+#     config['csv_log_dir'] = config['root_dir'] + \
+#         '/csv_logger/' + \
+#         config['model_name']+'/'   
+
+#     config['checkpoint_name'] = "{}_ex_{}_ep_{}_{}.hdf5".format(
+#         config['model_name'], config['experiment'], config['epochs'], datetime.now().strftime("%d-%b-%y"))
+#     config['checkpoint_dir'] = config['root_dir'] + \
+#         '/model/' + \
+#         config['model_name']+'/'   
+
+#     # Create save model directory
+#     if config['load_model_dir'] == 'None':
+#         config['load_model_dir'] = config['root_dir'] + \
+#             '/model/' + \
+#             config['model_name']+'/'  
+
+#     # Create Evaluation directory
+#     config['prediction_test_dir'] = config['root_dir'] + '/prediction/'+ config['model_name'] + '/test/' + config['experiment'] + '/'
+#     config['prediction_eval_dir'] = config['root_dir'] + '/prediction/'+ config['model_name'] + '/eval/' + config['experiment'] + '/'
+#     config['prediction_val_dir'] = config['root_dir'] + '/prediction/' + config['model_name'] + '/validation/' + config['experiment'] + '/'
+
+#     config['visualization_dir'] = config['root_dir']+'/visualization/'
+
+#     return config
+    
+    
+def frame_to_video(config, fname, fps=30):
     """
     Summary:
-        parsing the config.yaml file and re organize some variables
+        create video from frames
     Arguments:
-        path (str): config.yaml file directory
-        args (dict): dictionary of passing arguments
+        config (dict): configuration dictionary
+        fname (str): name of the video
     Return:
-        a dictonary
+        video
     """
-    with open(path, "r") as f:
-      config = yaml.safe_load(f)
     
-    # Replace default values with passing values
-    for key in args.keys():
-        if args[key] != None:
-            config[key] = args[key]
-            
-    config['height'] = config['patch_size']
-    config['width'] = config['patch_size']
+    image_folder=config['prediction_eval_dir']
+    image_names = os.listdir(image_folder)
+    image_names = sorted(image_names)
+    image_files = []
+    for i in image_names:
+        image_files.append(image_folder + "/" + i)
+    clip = moviepy.video.io.ImageSequenceClip.ImageSequenceClip(image_files, fps=fps)
+    clip.write_videofile(fname)
+
+
+# def video_to_frame(config):
+#     """
+#     Summary:
+#         create frames from video
+#     Arguments:
+#         config (dict): configuration dictionary
+#     Return:
+#         frames
+#     """
     
-    # Merge paths
-    config['train_dir'] = config['dataset_dir']+config['train_dir']
-    config['valid_dir'] = config['dataset_dir']+config['valid_dir']
-    config['test_dir'] = config['dataset_dir']+config['test_dir']
-    
-    config['p_train_dir'] = config['dataset_dir']+config['p_train_dir']
-    config['p_valid_dir'] = config['dataset_dir']+config['p_valid_dir']
-    config['p_test_dir'] = config['dataset_dir']+config['p_test_dir']
-    
-    # Create Callbacks paths
-    config['tensorboard_log_name'] = "{}_ex_{}_epochs_{}_{}".format(config['model_name'],config['experiment'],config['epochs'],datetime.now().strftime("%d-%b-%y"))
-    config['tensorboard_log_dir'] = config['root_dir']+'/logs/'+config['model_name']+'/'
+#     vidcap = cv2.VideoCapture(config["video_path"])
+#     success,image = vidcap.read()
+#     count = 0
+#     while success:
+#         cv2.imwrite(config['dataset_dir'] + '/video_frame' + '/frame_%06d.jpg' % count, image)     # save frame as JPEG file      
+#         success,image = vidcap.read() 
+#         count += 1
 
-    config['csv_log_name'] = "{}_ex_{}_epochs_{}_{}.csv".format(config['model_name'],config['experiment'],config['epochs'],datetime.now().strftime("%d-%b-%y"))
-    config['csv_log_dir'] = config['root_dir']+'/csv_logger/'+config['model_name']+'/'
-
-    config['checkpoint_name'] = "{}_ex_{}_epochs_{}_{}.hdf5".format(config['model_name'],config['experiment'],config['epochs'],datetime.now().strftime("%d-%b-%y"))
-    config['checkpoint_dir'] = config['root_dir']+'/model/'+config['model_name']+'/'
-
-    # Create save model directory
-    if config['load_model_dir']=='None':
-        config['load_model_dir'] = config['root_dir']+'/model/'+config['model_name']+'/'
-    
-    # Create Evaluation directory
-    config['prediction_test_dir'] = config['root_dir']+'/prediction/'+config['model_name']+'/test/'
-    config['prediction_val_dir'] = config['root_dir']+'/prediction/'+config['model_name']+'/validation/'
-    
-    config['visualization_dir'] = config['root_dir']+'/visualization/'
-
-    return config
-
-
-
-# Helper functions for visualizing Sentinel-1 images
-def scale_img(matrix):
-    """
-    Returns a scaled (H, W, D) image that is visually inspectable.
-    Image is linearly scaled between min_ and max_value, by channel.
-
-    Args:
-        matrix (np.array): (H, W, D) image to be scaled
-
-    Returns:
-        np.array: Image (H, W, 3) ready for visualization
-    """
-    # Set min/max values
-    min_values = np.array([[-23, -28, 0.2]])
-    max_values = np.array([[0, -5, 1]])
-
-    # Reshape matrix
-    w, h, d = matrix.shape
-    matrix = np.reshape(matrix, [w * h, d]).astype(np.float64)
-
-    # Scale by min/max
-    matrix = (matrix - min_values) / (
-        max_values - min_values
-    )
-    matrix = np.reshape(matrix, [w, h, d])
-
-    # Limit values to 0/1 interval
-    return matrix.clip(0, 1)
-
-def create_false_color_composite(vv_img, vh_img):
-    """
-    Returns a S1 false color composite for visualization.
-
-    Args:
-        path_vv (str): path to the VV band
-        path_vh (str): path to the VH band
-
-    Returns:
-        np.array: image (H, W, 3) ready for visualization
-    """    
-    # Stack arrays along the last dimension
-    s1_img = np.stack((vv_img, vh_img), axis=-1)
-
-    # Create false color composite
-    img = np.zeros((512, 512, 3), dtype=np.float32)
-    img[:,:,:2] = s1_img.copy()
-    img[:, :, 2] = (s1_img[:, :, 0]*s1_img[:, :, 1])
-
-
-    return scale_img(img)
-
-def plot_3d():
-    
-    # extract csv logger paths
-    paths = glob.glob("/home/mdsamiul/github_project/flood_water_mapping_segmentation/csv_logger/ad_unet/*.csv")
-    
-    # smooth plotting values
-    def my_tb_smooth(scalars: list[float], weight: float) -> list[float]:  # Weight between 0 and 1
-        """
-
-        ref: https://stackoverflow.com/questions/42011419/is-it-possible-to-call-tensorboard-smooth-function-manually
-
-        :param scalars:
-        :param weight:
-        :return:
-        """
-        last = scalars[0]  # First value in the plot (first timestep)
-        smoothed: list = []
-        for point in scalars:
-            smoothed_val = last * weight + (1 - weight) * point  # Calculate smoothed value
-            smoothed.append(smoothed_val)                        # Save it
-            last = smoothed_val                                  # Anchor the last smoothed value
-        return smoothed
-    
-    # initialize variables
-    epoch = []
-    mean_iou = []
-    patch = []
-    
-    # read data and smooth for plot
-    for path in paths:
-        if path.split("_")[-5] == "patchify" and path.split("_")[-2]=="60":
-            patch_size = int(path.split("_")[-4])
-        else:
-            patch_size = 512
-        data = pd.read_csv(path)
-        epoch.append(range(0, 60*2))
-        mean_iou.append(my_tb_smooth(data["val_my_mean_iou"][:60], 0.95)+(my_tb_smooth(data["val_my_mean_iou"][:60], 0.95)[::-1]))
-        patch.append(([patch_size]*60)+([patch_size]*60))
-    
-    # numpy array convert for plot
-    epoch = np.array(epoch)
-    mean_iou = np.array(mean_iou)
-    patch = np.array(patch)
-    
-    # create figure and plot
-    fig = plt.figure()
-    ax = plt.axes(projection='3d')
-    ax.plot_surface(patch, epoch, mean_iou,rstride=1, cstride=1,
-                    cmap='jet', edgecolor='none')\
-    
-    # customize figure visualization with labels and title
-    ax.set_yticklabels([-1,10, 20, 40, 40,20, 10])
-    ax.view_init(elev=20, azim=70)
-    plt.title('MeanIou accuracy for different patch size')
-    ax.set_zlabel("MeanIou accuracy")
-    ax.set_ylabel('Epoch')
-    ax.set_xlabel('Patch')
-    plt.savefig("area2.png", dpi=800)
-    plt.show()
-
-def find_best_worst():
-
-    path = glob.glob("/home/mdsamiul/github_project/flood_water_mapping_segmentation/prediction/mnet/test/*.*")
-
-    scores = np.zeros((55, 4), dtype=np.float32)
-    for i in range(len(path)):
-        id = int(path[i].split("_")[-3])
-        acu = np.float32(path[i].split("_")[-1].replace(".png", ""))
-        if path[i].split("_")[-4] == "patchify":
-            scores[id][2] = acu
-        elif path[i].split("_")[-4] == "balance":
-            scores[id][1] = acu
-        elif path[i].split("_")[-4] == "WOC":
-            scores[id][3] = acu
-        else:
-            scores[id][0] = acu
-
-    df = pd.DataFrame(scores)
-    df.to_csv("predic_score.csv")

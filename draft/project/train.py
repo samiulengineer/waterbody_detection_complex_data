@@ -4,14 +4,13 @@ import time
 from loss import *
 from model import get_model, get_model_transfer_lr
 from metrics import get_metrics
-from tensorflow import keras
+from utils import SelectCallbacks, get_config_yaml, create_paths
 from dataset import get_train_val_dataloader
-from utils import SelectCallbacks, create_paths
-from config import get_config
 from tensorflow.keras.models import load_model
 import tensorflow_addons as tfa
 
 tf.config.optimizer.set_jit("True")
+#mixed_precision.set_global_policy('mixed_float16')
 
 
 # Parsing variable ctrl + /
@@ -21,11 +20,10 @@ parser = argparse.ArgumentParser()
 parser.add_argument("--root_dir")
 parser.add_argument("--dataset_dir")
 parser.add_argument("--model_name")
-parser.add_argument("--epochs", type=int)
-parser.add_argument("--batch_size", type=int)
-parser.add_argument("--experiment")
-parser.add_argument("--gpu")
+parser.add_argument("--epochs")
+parser.add_argument("--batch_size")
 parser.add_argument("--index")
+parser.add_argument("--experiment")
 parser.add_argument("--patchify")
 parser.add_argument("--patch_size")
 parser.add_argument("--weights")
@@ -36,17 +34,8 @@ args = parser.parse_args()
 
 # Set up train configaration
 # ----------------------------------------------------------------------------------------------
-# config = get_config_yaml('project/config.yaml', vars(args)) 
-config = get_config(vars(args))
-create_paths(config, test = False)
-
-
-# setup gpu
-# ----------------------------------------------------------------------------------------------
-os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
-os.environ["CUDA_VISIBLE_DEVICES"] = config["gpu"]
-os.environ['TF_FORCE_GPU_ALLOW_GROWTH'] = 'true'
-
+config = get_config_yaml('config.yaml', vars(args))
+create_paths(config)
 
 # Print Experimental Setup before Training
 # ----------------------------------------------------------------------------------------------
@@ -61,49 +50,45 @@ print("Experiment = {}".format(str(config['experiment'])))
 # ----------------------------------------------------------------------------------------------
 train_dataset, val_dataset = get_train_val_dataloader(config)
 
-
 # Metrics
 # ----------------------------------------------------------------------------------------------
-metrics = list(get_metrics(config).values())  # [list] required for new model
+metrics = list(get_metrics(config).values()) # [list] required for new model
 custom_obj = get_metrics(config) # [dictionary] required for transfer learning & fine tuning
 
 # Optimizer
 # ----------------------------------------------------------------------------------------------
 learning_rate = 0.001
 weight_decay = 0.0001
-adam = tfa.optimizers.AdamW(
-    learning_rate=learning_rate, weight_decay=weight_decay)
+adam = tfa.optimizers.AdamW(learning_rate = learning_rate, weight_decay = weight_decay)
 
 # Loss Function
 # ----------------------------------------------------------------------------------------------
-loss = focal_loss() #tf.keras.losses.BinaryCrossentropy(from_logits=True) # required for new model
-custom_obj['loss'] = focal_loss() # required for transfer learning/fine-tuning
+loss = focal_loss()
+# loss = sm.losses.DiceLoss()
+custom_obj['loss'] = focal_loss()
 
 # Compile
 # ----------------------------------------------------------------------------------------------
 # transfer learning
-if (os.path.exists(os.path.join(config['load_model_dir'], config['load_model_name']))) and config['transfer_lr']:
+if (os.path.exists(os.path.join(config['load_model_dir'], config['load_model_name']))) and config['transfer_lr']: 
     print("Build model for transfer learning..")
     # load model and compile
-    model = load_model(os.path.join(
-        config['load_model_dir'], config['load_model_name']), custom_objects=custom_obj, compile=True)
+    model = load_model(os.path.join(config['load_model_dir'], config['load_model_name']), custom_objects = custom_obj, compile = True)
 
     model = get_model_transfer_lr(model, config['num_classes'])
-    model.compile(optimizer=adam, loss=loss, metrics=metrics)
+    model.compile(optimizer = adam, loss = loss, metrics = metrics)
 
+# transfer learning
 else:
-    # fine-tuning
-    if (os.path.exists(os.path.join(config['load_model_dir'], config['load_model_name']))):
-        print("Resume training from model checkpoint {}...".format(
-            config['load_model_name']))
+    if (os.path.exists(os.path.join(config['load_model_dir'], config['load_model_name']))): # fine-tuning
+        print("Resume training from model checkpoint {}...".format(config['load_model_name']))
         # load model and compile
-        model = load_model(os.path.join(
-            config['load_model_dir'], config['load_model_name']), custom_objects=custom_obj, compile=True)
-
+        model = load_model(os.path.join(config['load_model_dir'], config['load_model_name']), custom_objects = custom_obj, compile = True)
+        
     # new model
     else:
         model = get_model(config)
-        model.compile(optimizer=adam, loss=loss, metrics=metrics)
+        model.compile(optimizer = adam, loss = loss, metrics = metrics)
 
 # Callbacks
 # ----------------------------------------------------------------------------------------------
@@ -114,10 +99,11 @@ model.summary()
 # ----------------------------------------------------------------------------------------------
 t0 = time.time()
 history = model.fit(train_dataset,
-                    verbose=1,
-                    epochs=config['epochs'],
-                    validation_data=val_dataset,
-                    shuffle=False,
-                    callbacks=loggers.get_callbacks(val_dataset, model),
+                    verbose = 1, 
+                    epochs = config['epochs'],
+                    validation_data = val_dataset, 
+                    shuffle = False,
+                    callbacks = loggers.get_callbacks(val_dataset, model),
+                    
                     )
 print("training time minute: {}".format((time.time()-t0)/60))
