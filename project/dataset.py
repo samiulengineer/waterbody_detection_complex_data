@@ -964,11 +964,11 @@ def get_test_dataloader(config):
 
 if __name__ == '__main__':
     
-    train_dir = pd.read_csv("/home/mdsamiul/github_project/waterbody_segmentation_complex_data/data/train.csv")
-    valid_dir = pd.read_csv("/home/mdsamiul/github_project/waterbody_segmentation_complex_data/data/valid.csv")
+    train_dir = pd.read_csv("/mnt/hdd2/mdsamiul/waterbody_detection_complex_data/data/train.csv")
+    valid_dir = pd.read_csv("/mnt/hdd2/mdsamiul/waterbody_detection_complex_data/data/valid.csv")
 
     train_dataset = MyDataset(train_dir,
-                                in_channels=2, patchify=False,
+                                in_channels=3, patchify=False,
                                 batch_size=10, transform_fn=transform_data, 
                                 num_class=2, augment=None, 
                                 weights=None, patch_idx=None, tile_width=512)
@@ -1016,3 +1016,28 @@ if __name__ == '__main__':
     #     ab = np.argmax([y[0][1]], axis=3)[0]
     #     print(ab.shape)
     #     break
+
+
+#     train_dir = pd.read_csv("/mnt/hdd2/mdsamiul/waterbody_detection_complex_data/data/train.csv")
+# valid_dir = pd.read_csv("/mnt/hdd2/mdsamiul/waterbody_detection_complex_data/data/valid.csv")
+
+# train_dataset = MyDataset(train_dir,
+#                             in_channels=3, patchify=False,
+#                             batch_size=10, transform_fn=transform_data, 
+#                             num_class=2, augment=None, 
+#                             weights=None, patch_idx=None, tile_width=512)
+
+# x, y = train_dataset.__getitem__(1)
+# for batch in train_dataset:
+#     x, y = batch
+#     break
+# print(type(x))
+# print(type(y))
+# print(train_dataset.__len__())
+
+# print(x.shape)
+
+# len(y)
+
+# type(y[0])
+# print(y[0].shape)

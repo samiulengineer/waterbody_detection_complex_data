@@ -160,7 +160,7 @@ def display(display_list, idx, directory, score, exp, evaluation=False, visualiz
         # gray image plot rslc
         elif title[i]=="rslc1" or title[i]=="rslc2":
             plt.title(title[i], fontsize=6)
-            c2 = plt.imshow((display_list[title[i]])**0.3, cmap="gray", interpolation=None)
+            c2 = plt.imshow((display_list[title[i]])**0.25, cmap="gray", interpolation=None)
             ax = plt.gca()
             fig = plt.gcf()
             cbar = fig.colorbar(c2, ax=ax, fraction=0.046)
@@ -178,7 +178,7 @@ def display(display_list, idx, directory, score, exp, evaluation=False, visualiz
         # ifr plot
         elif title[i]=="ifg":
             plt.title(title[i], fontsize=6)
-            c2 = plt.imshow((display_list[title[i]]), cmap="jet", interpolation=None)
+            c2 = plt.imshow((display_list[title[i]]), cmap="YlGnBu", interpolation=None)
             ax = plt.gca()
             fig = plt.gcf()
             cbar = fig.colorbar(c2, ax=ax, fraction=0.046)
@@ -311,7 +311,7 @@ def patch_show_predictions(dataset, model, config):
                     "RSLC2 Mask": full_mask2,
                     "RSLC1 (MeanIOU_{:.4f})".format(score1): pred_full_label1,
                     "RSLC2 (MeanIOU_{:.4f})".format(score2): pred_full_label2
-                    }, i, config['prediction_val_dir'], total_score, config['experiment'])
+                    }, i, config['prediction_test_dir'], total_score, config['experiment'])
 
 
 # Save all plot figures
@@ -427,7 +427,7 @@ def val_show_predictions(dataset, model, config):
             "RSLC2 Mask": full_mask2,
             "RSLC1 (MeanIOU_{:.4f})".format(score1): pred_full_label1,
             "RSLC2 (MeanIOU_{:.4f})".format(score2): pred_full_label2
-            }, indexNum, config['prediction_val_dir'], total_score, config['experiment'])
+            }, i, config['prediction_val_dir'], total_score, config['experiment'])
 
 
 # Model Output Path

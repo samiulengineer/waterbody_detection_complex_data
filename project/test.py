@@ -89,9 +89,9 @@ if not config['evaluation']:
 
 # Frame to video
 # ----------------------------------------------------------------------------------------------
-if config["video_path"] != 'None':
-    fname = config['dataset_dir'] + 'prediction.avi'
-    frame_to_video(config, fname, fps=30)
+# if config["video_path"] != 'None':
+#     fname = config['dataset_dir'] + 'prediction.avi'
+#     frame_to_video(config, fname, fps=30)
 
 
 print("training time sec: {}".format((time.time()-t0)))

@@ -1,7 +1,4 @@
-import yaml
 from datetime import datetime
-
-
 
 config = {
     # Image Input/Output
@@ -20,7 +17,7 @@ config = {
     'batch_size': 10,
     'epochs': 1000,
     'learning_rate': 0.0003,  #3e-4
-    'val_plot_epoch': 20,
+    'val_plot_epoch': 10,
     'augment': True,
     'transfer_lr': False,
     'gpu': '3',
@@ -34,22 +31,23 @@ config = {
     # Patchify (phr & phr_cb experiment)
     # ----------------------------------------------------------------------------------------------
     'patchify': True,
-    'patch_class_balance': False, # whether to use class balance while doing patchify
-    'patch_size': 512, # height = width, anyone is suitable
+    'patch_class_balance': True, # whether to use class balance while doing patchify
+    'patch_size': 512, # height = width, anysize is suitable
     'stride': 64,
     
     # Dataset
     # --------------------------------mask--------------------------------------------------------------
     'weights': True, # False if cfr, True if cfr_cb
     'balance_weights': [0.76, 0.24],
-    'root_dir': '/home/mdsamiul/github_project/waterbody_segmentation_complex_data',
-    'dataset_dir': '/home/mdsamiul/github_project/waterbody_segmentation_complex_data/data/',
-    'visualization_dir': '/home/mdsamiul/github_project/waterbody_segmentation_complex_data/visualization/',
+    'root_dir': '/mnt/hdd2/mdsamiul/waterbody_detection_complex_data',
+    'dataset_dir': '/mnt/hdd2/mdsamiul/waterbody_detection_complex_data/data/',
+    'visualization_dir': '/mnt/hdd2/mdsamiul/waterbody_detection_complex_data/visualization/',
     'train_size': 0.8, 
     'train_dir': 'train.csv',
     'valid_dir': 'valid.csv',
     'test_dir': 'test.csv',
     'eval_dir': 'eval.csv',
+    
     # Logger/Callbacks
     # ----------------------------------------------------------------------------------------------
     'csv': True,
@@ -62,8 +60,8 @@ config = {
 
     # Evaluation
     # ----------------------------------------------------------------------------------------------
-    'load_model_name': 'unet_ex_cfr_cb_ep_1000_11-Feb-23.hdf5',
-    'load_model_dir': None, #  If None, then by befault 'root_dir/model/model_name/load_model_name'
+    'load_model_name': 'aunet_ex_phr_epochs_1000_06-May-23.hdf5',
+    'load_model_dir': '/mnt/hdd2/mdsamiul/waterbody_detection_complex_data/logs/model/unet/', #  If None, then by befault 'root_dir/model/model_name/load_model_name'
     'evaluation': False, # default evaluation value will not work
     'video_path': None, # If None, then by default 'root_dir/data/video_frame'
 
@@ -90,10 +88,47 @@ def get_config(args={}):
         if args[key] != None:
             config[key] = args[key]
 
+    experiment_name = ''
     if config['patchify']:
         config['height'] = config['patch_size']
         config['width'] = config['patch_size']
 
+        if config["patch_class_balance"]:
+            experiment_name = 'phr_cb_'
+        else:
+            experiment_name = 'phr_'
+
+    config['p_train_dir'] = 'json/train_patch_' + experiment_name + str(config['patch_size']) + '.json'
+    config['p_valid_dir'] = 'json/valid_patch_' + experiment_name  + str(config['patch_size']) + '.json'
+    config['p_test_dir'] = 'json/test_patch_' + experiment_name  + str(config['patch_size']) + '.json'
+
     # Merge paths
-    config['train_dir'] = config['dataset_dir']+config['train_dir']
-    config['valid_dir'
+    config['train_dir'] = config['dataset_dir'] + config['train_dir']
+    config['valid_dir'] = config['dataset_dir'] + config['valid_dir']
+    config['test_dir'] = config['dataset_dir'] + config['test_dir']
+    
+    config['p_train_dir'] = config['dataset_dir'] + config['p_train_dir']
+    config['p_valid_dir'] = config['dataset_dir'] + config['p_valid_dir']
+    config['p_test_dir'] = config['dataset_dir'] + config['p_test_dir']
+    
+    # Create Callbacks paths
+    config['tensorboard_log_name'] = "{}_ex_{}_epochs_{}_{}".format(config['model_name'],config['experiment'],config['epochs'],datetime.now().strftime("%d-%b-%y"))
+    config['tensorboard_log_dir'] = config['root_dir']+'/logs/'+'/tens_logger/'+config['model_name']+'/'
+
+    config['csv_log_name'] = "{}_ex_{}_epochs_{}_{}.csv".format(config['model_name'],config['experiment'],config['epochs'],datetime.now().strftime("%d-%b-%y"))
+    config['csv_log_dir'] = config['root_dir']+'/logs/'+'/csv_logger/'+config['model_name']+'/'
+
+    config['checkpoint_name'] = "{}_ex_{}_epochs_{}_{}.hdf5".format(config['model_name'],config['experiment'],config['epochs'],datetime.now().strftime("%d-%b-%y"))
+    config['checkpoint_dir'] = config['root_dir']+'/logs/'+'/model/'+config['model_name']+'/'
+
+    # Create save model directory
+    if config['load_model_dir']=='None':
+        config['load_model_dir'] = config['root_dir']+'/logs/'+'/model/'+config['model_name']+'/'
+    
+    # Create Evaluation directory
+    config['prediction_test_dir'] = config['root_dir']+'/logs/'+'/prediction/'+config['model_name']+'/test/'
+    config['prediction_val_dir'] = config['root_dir']+'/logs/'+'/prediction/'+config['model_name']+'/validation/'
+    
+    config['visualization_dir'] = config['root_dir']+'/logs/'+'/visualization/'
+
+    return config
