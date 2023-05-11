@@ -136,29 +136,8 @@ def display(display_list, idx, directory, score, exp, evaluation=False, visualiz
     # plot all the image in a subplot
     for i in range(len(display_list)):
         plt.subplot(1, len(display_list), i+1)
-        if title[i] == "DEM":  # for plot nasadem image channel
-            ax = plt.gca()
-            hillshade = es.hillshade(display_list[title[i]], azimuth=180)
-            ep.plot_bands(
-                display_list[title[i]],
-                cbar=False,
-                cmap="terrain",
-                title=title[i],
-                ax=ax
-            )
-            ax.imshow(hillshade, cmap="Greys", alpha=0.5)
-        elif title[i] == "VV" or title[i] == "VH":  # for plot VV or VH image channel
-            plt.title(title[i])
-            plt.imshow((display_list[title[i]]))
-            plt.axis('off')
-        elif 'Prediction' in title[i]:       # for ploting prediction mask on input image
-            plt.title(title[i])
-            masked = np.ma.masked_where(display_list[title[i]] == 0, display_list[title[i]])
-            plt.imshow(display_list["image"], 'gray', interpolation='none')
-            plt.imshow(masked, 'jet', interpolation='none', alpha=0.8)
-            plt.axis('off')
-        # gray image plot rslc
-        elif title[i]=="rslc1" or title[i]=="rslc2":
+        # plot rslc 
+        if title[i]=="RSLC1 AMP" or title[i]=="RSLC2 AMP":
             plt.title(title[i], fontsize=6)
             c2 = plt.imshow((display_list[title[i]])**0.25, cmap="gray", interpolation=None)
             ax = plt.gca()
@@ -166,17 +145,15 @@ def display(display_list, idx, directory, score, exp, evaluation=False, visualiz
             cbar = fig.colorbar(c2, ax=ax, fraction=0.046)
             cbar.ax.tick_params(labelsize=6) 
             plt.axis('off')
-        elif title[i]=="rslc1_label" or title[i]=="rslc2_label":
-            plt.title(title[i], fontsize=6)
-            c2 = plt.imshow((display_list[title[i]])**0.3, cmap="gray", interpolation=None)
-            ax = plt.gca()
-            fig = plt.gcf()
-            cbar = fig.colorbar(c2, ax=ax, fraction=0.046)
-            cbar.ax.tick_params(labelsize=6) 
+        # for ploting prediction mask on input image
+        elif 'Prediction' in title[i]:       
+            plt.title(title[i])
+            masked = np.ma.masked_where(display_list[title[i]] == 0, display_list[title[i]])
+            plt.imshow(display_list["image"], 'gray', interpolation='none')
+            plt.imshow(masked, 'jet', interpolation='none', alpha=0.8)
             plt.axis('off')
-            
         # ifr plot
-        elif title[i]=="ifg":
+        elif title[i]=="IFG":
             plt.title(title[i], fontsize=6)
             c2 = plt.imshow((display_list[title[i]]), cmap="YlGnBu", interpolation=None)
             ax = plt.gca()
@@ -184,11 +161,10 @@ def display(display_list, idx, directory, score, exp, evaluation=False, visualiz
             cbar = fig.colorbar(c2, ax=ax, fraction=0.046)
             cbar.ax.tick_params(labelsize=6) 
             plt.axis('off')
-
         # plot labels
         else:
             plt.title(title[i], fontsize=6)
-            c2 = plt.imshow((display_list[title[i]]), vmin=0, vmax=1)
+            c2 = plt.imshow((display_list[title[i]])**0.3, cmap="gray", interpolation=None)
             ax = plt.gca()
             fig = plt.gcf()
             cbar = fig.colorbar(c2, ax=ax, fraction=0.046)
@@ -208,6 +184,89 @@ def display(display_list, idx, directory, score, exp, evaluation=False, visualiz
     plt.clf()
     plt.cla()
     plt.close()
+
+
+
+# def display(display_list, idx, directory, score, exp, evaluation=False, visualize=False):
+    
+#     plt.figure(figsize=(12, 8))  # set the figure size
+#     title = list(display_list.keys())  # get tittle
+
+#     # plot all the image in a subplot
+#     for i in range(len(display_list)):
+#         plt.subplot(1, len(display_list), i+1)
+#         if title[i] == "DEM":  # for plot nasadem image channel
+#             ax = plt.gca()
+#             hillshade = es.hillshade(display_list[title[i]], azimuth=180)
+#             ep.plot_bands(
+#                 display_list[title[i]],
+#                 cbar=False,
+#                 cmap="terrain",
+#                 title=title[i],
+#                 ax=ax
+#             )
+#             ax.imshow(hillshade, cmap="Greys", alpha=0.5)
+#         elif title[i] == "VV" or title[i] == "VH":  # for plot VV or VH image channel
+#             plt.title(title[i])
+#             plt.imshow((display_list[title[i]]))
+#             plt.axis('off')
+#         elif 'Prediction' in title[i]:       # for ploting prediction mask on input image
+#             plt.title(title[i])
+#             masked = np.ma.masked_where(display_list[title[i]] == 0, display_list[title[i]])
+#             plt.imshow(display_list["image"], 'gray', interpolation='none')
+#             plt.imshow(masked, 'jet', interpolation='none', alpha=0.8)
+#             plt.axis('off')
+#         # gray image plot rslc
+#         elif title[i]=="RSLC1 AMP" or title[i]=="RSLC2 AMP":
+#             plt.title(title[i], fontsize=6)
+#             c2 = plt.imshow((display_list[title[i]])**0.25, cmap="gray", interpolation=None)
+#             ax = plt.gca()
+#             fig = plt.gcf()
+#             cbar = fig.colorbar(c2, ax=ax, fraction=0.046)
+#             cbar.ax.tick_params(labelsize=6) 
+#             plt.axis('off')
+#         elif title[i]=="rslc1_label" or title[i]=="rslc2_label":
+#             plt.title(title[i], fontsize=6)
+#             c2 = plt.imshow((display_list[title[i]])**0.3, cmap="gray", interpolation=None)
+#             ax = plt.gca()
+#             fig = plt.gcf()
+#             cbar = fig.colorbar(c2, ax=ax, fraction=0.046)
+#             cbar.ax.tick_params(labelsize=6) 
+#             plt.axis('off')
+            
+#         # ifr plot
+#         elif title[i]=="IFG":
+#             plt.title(title[i], fontsize=6)
+#             c2 = plt.imshow((display_list[title[i]]), cmap="YlGnBu", interpolation=None)
+#             ax = plt.gca()
+#             fig = plt.gcf()
+#             cbar = fig.colorbar(c2, ax=ax, fraction=0.046)
+#             cbar.ax.tick_params(labelsize=6) 
+#             plt.axis('off')
+
+#         # plot labels
+#         else:
+#             plt.title(title[i], fontsize=6)
+#             c2 = plt.imshow((display_list[title[i]]), vmin=0, vmax=1)
+#             ax = plt.gca()
+#             fig = plt.gcf()
+#             cbar = fig.colorbar(c2, ax=ax, fraction=0.046)
+#             cbar.ax.tick_params(labelsize=6) 
+#             plt.axis('off')
+
+#     # create file name to save
+#     if evaluation:
+#         prediction_name = "{}_{}.png".format(exp, idx)
+#     elif visualize:
+#         prediction_name = "img_id_{}.png".format(idx)
+#     else:
+#         prediction_name = "{}_{}_miou_{:.4f}.png".format(exp, idx, score) 
+    
+#     plt.savefig(os.path.join(directory, prediction_name),
+#                 bbox_inches='tight', dpi=800)  # save all the figures
+#     plt.clf()
+#     plt.cla()
+#     plt.close()
     
     
 def display_label(img, img_path, directory):
@@ -283,7 +342,7 @@ def patch_show_predictions(dataset, model, config):
             pred_full_label2[p_idx[0]:p_idx[1], p_idx[2]:p_idx[3]] = pred2[0]   # [start hig: end index, ]
 
         # get full feature image and mask
-        full_feature , full_mask1, full_mask2 = read_img(full_img_dir.iloc[i])
+        full_feature , full_mask1, full_mask2 = read_img(full_img_dir.iloc[i], width=config['tiles_size'])
         
         # calculate keras MeanIOU score
         m1 = keras.metrics.MeanIoU(num_classes=config['num_classes'])
@@ -389,7 +448,7 @@ def val_show_predictions(dataset, model, config):
 
     i = random.randint(0, len(full_img_dir))
     # get tiles size
-    mask_size = config["height"]
+    mask_size = config["tiles_size"]
     # for same mask directory get the index
     idx = df[df["rslc0_label"] == full_img_dir["rslc0_label"][i]].index
 
@@ -407,7 +466,7 @@ def val_show_predictions(dataset, model, config):
         
     
     # get full feature image and mask
-    full_feature , full_mask1, full_mask2 = read_img(full_img_dir.iloc[i])
+    full_feature , full_mask1, full_mask2 = read_img(full_img_dir.iloc[i], width=config['tiles_size'])
     
     # calculate keras MeanIOU score
     m1 = keras.metrics.MeanIoU(num_classes=config['num_classes'])
@@ -421,7 +480,7 @@ def val_show_predictions(dataset, model, config):
     # plot and saving image
         
     display({"RSLC1 AMP": full_feature[:,:,0],
-            "RSLC2 AMP ": full_feature[:,:,1],
+            "RSLC2 AMP": full_feature[:,:,1],
             "IFG": full_feature[:,:,2],
             "RSLC1 Mask": full_mask1,
             "RSLC2 Mask": full_mask2,

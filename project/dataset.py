@@ -111,7 +111,6 @@ def read_img(data_p, in_channels=None, label=False, patch_idx=None, width=512):
         # inputs = np.stack([rslc0_amp, rslc1_amp], axis=-1)
 
     
-
     return inputs, rslc0_label, rslc1_label
 
 
@@ -322,7 +321,7 @@ def readRas(filename, crop=None, mmap=False):
     infile.close()
     return image, cmap
 
-def save_tiles(path, patch_size=512, stride=512, width=11361, height=10000, out_path=None, label=False):
+def save_tiles(path, tiles_size, stride, width, height, out_path=None, label=False):
     """
     Summary:
         create overlap or non-overlap tiles from large rslc image
@@ -343,17 +342,18 @@ def save_tiles(path, patch_size=512, stride=512, width=11361, height=10000, out_
     slc_id = path.split("/")[-1].split(".")[0].split("\\")[-1]
     
     # calculating number patch for given image
-    patch_height = int((slc.shape[0]-patch_size)/stride)+1 # [{(image height-patch_size)/stride}+1]
-    patch_width = int((slc.shape[1]-patch_size)/stride)+1 # [{(image width-patch_size)/stride}+1]
+    patch_height = int((slc.shape[0]-tiles_size)/stride) + 1 # [{(image height-patch_size)/stride}+1]
+    patch_width = int((slc.shape[1]-tiles_size)/stride) + 1 # [{(image width-patch_size)/stride}+1]
     
+
     pbar = ProgressBar()
     # image column traverse
     for i in pbar(range(patch_height)):
         s_row = i*stride
-        e_row = s_row+patch_size
+        e_row = s_row + tiles_size
         for j in range(patch_width):
-            start = (j*stride)
-            end = start+patch_size
+            start = (j * stride)
+            end = start + tiles_size
             tmp = slc[s_row:e_row, start:end]
             if label:
                 f_name = out_path+slc_id+"_"+str(i)+"_"+str(j)+".ras"
@@ -363,12 +363,12 @@ def save_tiles(path, patch_size=512, stride=512, width=11361, height=10000, out_
                 data_reader.writeBin(f_name, tmp, "floatComplex")
     
     # if shape does not match with patch multiplication
-    if (patch_height*patch_size)<slc.shape[0]:
-        s_row = slc.shape[0]-patch_size
+    if (patch_height*tiles_size)<slc.shape[0]:
+        s_row = slc.shape[0]-tiles_size
         e_row = slc.shape[0]
         for j in range(patch_width):
             start = (j*stride)
-            end = start+patch_size
+            end = start+tiles_size
             tmp = slc[s_row:e_row, start:end]
             if label:
                 f_name = out_path+slc_id+"_"+str(patch_height)+"_"+str(j)+".ras"
@@ -377,11 +377,11 @@ def save_tiles(path, patch_size=512, stride=512, width=11361, height=10000, out_
                 f_name = out_path+slc_id+"_"+str(patch_height)+"_"+str(j)+".rslc"
                 data_reader.writeBin(f_name, tmp, "floatComplex")
     
-    if (patch_width*patch_size)<slc.shape[1]:
+    if (patch_width*tiles_size)<slc.shape[1]:
         for i in range(patch_height):
             s_row = i*stride
-            e_row = s_row+patch_size
-            start = slc.shape[1]-patch_size
+            e_row = s_row+tiles_size
+            start = slc.shape[1]-tiles_size
             end = slc.shape[1]
             tmp = slc[s_row:e_row, start:end]
             if label:
@@ -392,7 +392,6 @@ def save_tiles(path, patch_size=512, stride=512, width=11361, height=10000, out_
                 data_reader.writeBin(f_name, tmp, "floatComplex")
         
 def data_path_split(config):
-    
     """
     Summary:
         spliting data into train, test, valid
@@ -405,7 +404,8 @@ def data_path_split(config):
     if not (os.path.exists((config['dataset_dir']+"tiles_path.csv"))):
         
         print("Creating tiles: ")
-        wid, hgt = 11361, 10820  # from the masterpar.xml
+        wid, hgt = config['actual_width'], config['actual_height']  # from the masterpar.xml
+        tiles_size = config['tiles_size']
         
         rslcs = sorted(glob.glob(config["dataset_dir"]+"rslc/*.rslc.notopo"))
         label = sorted(glob.glob(config["dataset_dir"]+"label/*.ras"))
@@ -416,8 +416,8 @@ def data_path_split(config):
 
         for i in range(len(rslcs)-1):
             out_path = config["dataset_dir"]+"rslc"+str(i)+"/"
-            save_tiles(rslcs[i], patch_size=config["height"], stride=config["height"], width=wid, height=hgt, out_path=(out_path+"features/"))
-            save_tiles(label[i], patch_size=config["height"], stride=config["height"], width=wid, height=hgt, out_path=(out_path+"label/"), label=True)
+            save_tiles(rslcs[i], tiles_size=tiles_size, stride=tiles_size, width=wid, height=hgt, out_path=(out_path+"features/"))
+            save_tiles(label[i], tiles_size=tiles_size, stride=tiles_size, width=wid, height=hgt, out_path=(out_path+"label/"), label=True)
             data_paths["rslc"+str(i)] = sorted(glob.glob((out_path+"features/*.rslc")))
             data_paths["rslc"+str(i)+"_label"] = sorted(glob.glob((out_path+"label/*.ras")))
     
@@ -430,6 +430,7 @@ def data_path_split(config):
     save_csv(train, config, "train.csv")
     save_csv(valid, config, "valid.csv")
     save_csv(test, config, "test.csv")
+    
     
     
 def eval_data_path_split(config):
@@ -616,7 +617,7 @@ def patch_images(data, config, name):
 
 
 class Augment:
-    def __init__(self, batch_size, channels, ratio=0.3, seed=42):
+    def __init__(self, batch_size, channels, ratio=0.3, seed=42, tiles_width=512):
         super().__init__()
         """
         Summary:
@@ -629,7 +630,7 @@ class Augment:
             class object
         """
 
-
+        self.tiles_width = tiles_width
         self.ratio=ratio
         self.channels= channels
         self.aug_img_batch = math.ceil(batch_size*ratio)
@@ -659,9 +660,9 @@ class Augment:
 
         for i in aug_idx:
             if patch_idx:
-                data_p = read_img(data.iloc[i], in_channels = self.channels, patch_idx=patch_idx[i])
+                data_p = read_img(data.iloc[i], in_channels = self.channels, patch_idx=patch_idx[i], width=self.tiles_width)
             else:
-                data_p = read_img(data.iloc[i], in_channels = self.channels)
+                data_p = read_img(data.iloc[i], in_channels = self.channels, width=self.tiles_width)
 
             masks = np.stack([data_p[1], data_p[2]], axis=-1)
             augmented = self.aug(image=data_p[0], mask=masks)
@@ -761,6 +762,10 @@ class MyDataset(Sequence):
             inputs = inputs + aug_imgs
             masks = masks + aug_masks1
             masks2 = masks2 + aug_masks2
+        
+        # print(inputs[1].shape)
+        # print(masks[1].shape)
+        # print(masks2[1].shape)
         
         inputs, masks, masks2 = self.transform_fn(inputs, masks, masks2, self.num_class)
 
@@ -881,7 +886,7 @@ def get_train_val_dataloader(config):
 
     # create Augment object if augment is true
     if config['augment'] and config['batch_size'] > 1:
-        augment_obj = Augment(config['batch_size'], config['in_channels'])
+        augment_obj = Augment(config['batch_size'], config['in_channels'], tiles_width=config['tiles_size'])
         # new batch size after augment data for train
         n_batch_size = config['batch_size']-augment_obj.aug_img_batch
     else:
@@ -899,12 +904,12 @@ def get_train_val_dataloader(config):
                                 in_channels=config['in_channels'], patchify=config['patchify'],
                                 batch_size=n_batch_size, transform_fn=transform_data, 
                                 num_class=config['num_classes'], augment=augment_obj, 
-                                weights=weights, patch_idx=train_idx, tile_width=config["height"])
+                                weights=weights, patch_idx=train_idx, tile_width=config["tiles_size"])
 
     val_dataset = MyDataset(valid_dir,
                             in_channels=config['in_channels'],patchify=config['patchify'],
                             batch_size=config['batch_size'], transform_fn=transform_data, 
-                            num_class=config['num_classes'],patch_idx=valid_idx, tile_width=config["height"])
+                            num_class=config['num_classes'],patch_idx=valid_idx, tile_width=config["tiles_size"])
     
     return train_dataset, val_dataset
 
@@ -955,7 +960,7 @@ def get_test_dataloader(config):
     test_dataset = MyDataset(test_dir,
                              in_channels=config['in_channels'], patchify=config['patchify'],
                              batch_size=config['batch_size'], transform_fn=transform_data,
-                             num_class=config['num_classes'], patch_idx=test_idx, tile_width=config["height"])
+                             num_class=config['num_classes'], patch_idx=test_idx, tile_width=config["width"])
 
     return test_dataset
 
@@ -1017,10 +1022,6 @@ if __name__ == '__main__':
     #     print(ab.shape)
     #     break
 
-
-#     train_dir = pd.read_csv("/mnt/hdd2/mdsamiul/waterbody_detection_complex_data/data/train.csv")
-# valid_dir = pd.read_csv("/mnt/hdd2/mdsamiul/waterbody_detection_complex_data/data/valid.csv")
-
 # train_dataset = MyDataset(train_dir,
 #                             in_channels=3, patchify=False,
 #                             batch_size=10, transform_fn=transform_data, 
@@ -1041,3 +1042,18 @@ if __name__ == '__main__':
 
 # type(y[0])
 # print(y[0].shape)
+
+
+# for patchifying 
+
+# from config import get_config
+# config = get_config()
+# with open(config['p_train_dir'], 'r') as j:
+#     train_dir = json.loads(j.read())
+# with open(config['p_valid_dir'], 'r') as j:
+#     valid_dir = json.loads(j.read())
+         
+# train_idx = train_dir['patch_idx']
+# valid_idx = valid_dir['patch_idx']
+# train_dir = pd.DataFrame.from_dict(train_dir)
+# valid_dir = pd.DataFrame.from_dict(valid_dir)

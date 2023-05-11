@@ -9,6 +9,7 @@ config = {
     'width': 512,  # image height and width must be same because we are patchifing square images from 11361 X 10820 image.
     'actual_height' : 10820,
     'actual_width' : 11361,
+    'tiles_size' : 1024, # creating square tiles
     
     # Training
     # ----------------------------------------------------------------------------------------------
@@ -89,6 +90,7 @@ def get_config(args={}):
             config[key] = args[key]
 
     experiment_name = ''
+
     if config['patchify']:
         config['height'] = config['patch_size']
         config['width'] = config['patch_size']
@@ -97,6 +99,10 @@ def get_config(args={}):
             experiment_name = 'phr_cb_'
         else:
             experiment_name = 'phr_'
+    else:
+        config['height'] = config['tiles_size']
+        config['width'] = config['tiles_size']
+
 
     config['p_train_dir'] = 'json/train_patch_' + experiment_name + str(config['patch_size']) + '.json'
     config['p_valid_dir'] = 'json/valid_patch_' + experiment_name  + str(config['patch_size']) + '.json'
