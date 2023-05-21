@@ -48,7 +48,7 @@ dtypes = {
     'ptsel_inds': '<i4'
 }
 
-def transform_data(inp, mask1, mask2, num_class, scale=True):
+def transform_data(inp1, inp2, mask1, mask2, num_class, scale=True):
     """
     Summary:
         transform label/mask into one hot matrix and return
@@ -62,16 +62,30 @@ def transform_data(inp, mask1, mask2, num_class, scale=True):
     scaler = MinMaxScaler((0.0,0.9999999))
 
     
+    # if scale:     prev
+    #     inputs = []
+    #     for i in range(len(inp)):
+    #         dim = inp[i].shape
+    #         inputs.append(scaler.fit_transform(inp[i].reshape(-1, dim[-1])).reshape(dim))
+    # else:
+    #     inputs = inp
+
+
+    # return np.array(inputs), to_categorical(mask1, num_class), to_categorical(mask2, num_class)
+    
+
     if scale:
-        inputs = []
-        for i in range(len(inp)):
-            dim = inp[i].shape
-            inputs.append(scaler.fit_transform(inp[i].reshape(-1, dim[-1])).reshape(dim))
+        inputs1 = []
+        inputs2 = []
+        for i in range(len(inp1)):
+            inputs1.append(scaler.fit_transform(inp1[i]))
+            inputs2.append(scaler.fit_transform(inp2[i]))
     else:
-        inputs = inp
+        inputs1 = inp1
+        inputs2 = inp2
 
 
-    return np.array(inputs), to_categorical(mask1, num_class), to_categorical(mask2, num_class)
+    return np.array(inputs1), np.array(inputs2), to_categorical(mask1, num_class), to_categorical(mask2, num_class)
 
 
 def read_img(data_p, in_channels=None, label=False, patch_idx=None, width=512):
@@ -111,7 +125,8 @@ def read_img(data_p, in_channels=None, label=False, patch_idx=None, width=512):
         # inputs = np.stack([rslc0_amp, rslc1_amp], axis=-1)
 
     
-    return inputs, rslc0_label, rslc1_label
+    # return inputs, rslc0_label, rslc1_label           # prev
+    return rslc0_amp, rslc1_amp, rslc0_label, rslc1_label
 
 
 def data_split(images, config):
@@ -654,7 +669,11 @@ class Augment:
 
         # choose random image from dataset to augment
         aug_idx = np.random.randint(0, len(data), self.aug_img_batch)
-        features = []
+
+        # features = [] prev
+        rslc0 = []
+        rslc1 = []
+
         labels = []
         labels2 = []
 
@@ -664,12 +683,20 @@ class Augment:
             else:
                 data_p = read_img(data.iloc[i], in_channels = self.channels, width=self.tiles_width)
 
-            masks = np.stack([data_p[1], data_p[2]], axis=-1)
+            # masks = np.stack([data_p[1], data_p[2]], axis=-1)     # prev
+            # augmented = self.aug(image=data_p[0], mask=masks)
+            # features.append(augmented['image'])
+            # labels.append(augmented['mask'][:,:,0])
+            # labels2.append(augmented['mask'][:,:,1])
+
+            masks = np.stack([data_p[2], data_p[3]], axis=-1)
             augmented = self.aug(image=data_p[0], mask=masks)
-            features.append(augmented['image'])
+            augmented2 = self.aug(image=data_p[1], mask=masks)
+            rslc0.append(augmented['image'])
+            rslc1.append(augmented2['image'])
             labels.append(augmented['mask'][:,:,0])
             labels2.append(augmented['mask'][:,:,1])
-        return features, labels, labels2
+        return rslc0, rslc1, labels, labels2
 
 
 # Dataloader class
@@ -739,7 +766,12 @@ class MyDataset(Sequence):
         if self.patchify:
             batch_patch = batch["patch_idx"].values
         
-        inputs = []
+        # inputs = []   # prev
+        # masks = []
+        # masks2 = []
+
+        rslc = []
+        rslc2 = []
         masks = []
         masks2 = []
 
@@ -749,25 +781,38 @@ class MyDataset(Sequence):
             else:
                 data_p = read_img(batch.iloc[i], in_channels = self.in_channels, width=self.tile_width)
             
-            inputs.append(data_p[0])
-            masks.append(data_p[1])
-            masks2.append(data_p[2])
+            # inputs.append(data_p[0])  # prev
+            # masks.append(data_p[1])
+            # masks2.append(data_p[2])
+
+            rslc.append(data_p[0])
+            rslc2.append(data_p[1])
+            masks.append(data_p[2])
+            masks2.append(data_p[3])
         
         # augment data using Augment class above if augment is true
+        # if self.augment:      prev
+        #     if self.patchify:
+        #         aug_imgs, aug_masks1, aug_masks2 = self.augment.call(self.data, self.patch_idx) # augment images and mask randomly
+        #     else:
+        #         aug_imgs, aug_masks1, aug_masks2 = self.augment.call(self.data) # augment images and mask randomly
+        #     inputs = inputs + aug_imgs
+        #     masks = masks + aug_masks1
+        #     masks2 = masks2 + aug_masks2
+
         if self.augment:
             if self.patchify:
-                aug_imgs, aug_masks1, aug_masks2 = self.augment.call(self.data, self.patch_idx) # augment images and mask randomly
+                aug_imgs1, aug_imgs2, aug_masks1, aug_masks2 = self.augment.call(self.data, self.patch_idx) # augment images and mask randomly
             else:
-                aug_imgs, aug_masks1, aug_masks2 = self.augment.call(self.data) # augment images and mask randomly
-            inputs = inputs + aug_imgs
+                aug_imgs1, aug_imgs2, aug_masks1, aug_masks2 = self.augment.call(self.data) # augment images and mask randomly
+            rslc = rslc + aug_imgs1
+            rslc2 = rslc2 + aug_imgs2
             masks = masks + aug_masks1
             masks2 = masks2 + aug_masks2
         
-        # print(inputs[1].shape)
-        # print(masks[1].shape)
-        # print(masks2[1].shape)
-        
-        inputs, masks, masks2 = self.transform_fn(inputs, masks, masks2, self.num_class)
+        # inputs, masks, masks2 = self.transform_fn(inputs, masks, masks2, self.num_class)   prev
+
+        rslc, rslc2, masks, masks2 = self.transform_fn(rslc, rslc2, masks, masks2, self.num_class)
 
         if self.weights != None:
 
@@ -776,13 +821,15 @@ class MyDataset(Sequence):
             y_weights = tf.gather(class_weights, indices=tf.cast(masks, tf.int32))#([self.paths[i] for i in indexes])
             y_weights2 = tf.gather(class_weights, indices=tf.cast(masks2, tf.int32))
 
-            return tf.convert_to_tensor(inputs), [y_weights, y_weights2]
+            # return tf.convert_to_tensor(inputs), [y_weights, y_weights2]  prev
+            # return [tf.convert_to_tensor(inputs), tf.convert_to_tensor(inputs)], [y_weights, y_weights2]  prev
 
-        return inputs, [masks, masks2]
-        # return inputs, inputs
-        # return {"input_1": inputs,
-        # "out1": masks,
-        # "out2": masks2}
+            return [tf.convert_to_tensor(rslc), tf.convert_to_tensor(rslc2)], [y_weights, y_weights2]
+
+
+        # return inputs, [masks, masks2]    prev
+        return [rslc, rslc2], [masks, masks2]
+        
     
 
     def get_random_data(self, idx=-1):
@@ -802,19 +849,32 @@ class MyDataset(Sequence):
         else:
             idx = np.random.randint(0, len(self.data))
         
-        inputs = []
+        # inputs = []   prev
+        # masks = []
+        # masks2 = []
+
+        rslc = []
+        rslc2 = []
         masks = []
         masks2 = []
+
         if self.patchify:
             data_p = read_img(self.data.iloc[idx], in_channels = self.in_channels, patch_idx=self.data.patch_idx[idx], width=self.tile_width)
         else:
             data_p = read_img(self.data.iloc[idx], in_channels = self.in_channels, width=self.tile_width)
             
-        inputs.append(data_p[0])
-        masks.append(data_p[1])
-        masks2.append(data_p[2])
+        # inputs.append(data_p[0])  prev
+        # masks.append(data_p[1])
+        # masks2.append(data_p[2])
+
+        rslc.append(data_p[0])
+        rslc2.append(data_p[1])
+        masks.append(data_p[2])
+        masks2.append(data_p[3])
         
-        inputs, masks, masks2 = self.transform_fn(inputs, masks, masks2, self.num_class)
+        # inputs, masks, masks2 = self.transform_fn(inputs, masks, masks2, self.num_class)  prev
+
+        rslc, rslc2, masks, masks2 = self.transform_fn(rslc, rslc2, masks, masks2, self.num_class)
 
         if self.weights != None:
 
@@ -823,9 +883,12 @@ class MyDataset(Sequence):
             y_weights = tf.gather(class_weights, indices=tf.cast(masks, tf.int32))#([self.paths[i] for i in indexes])
             y_weights2 = tf.gather(class_weights, indices=tf.cast(masks2, tf.int32))
 
-            return tf.convert_to_tensor(inputs), y_weights, y_weights2, idx
+            # return tf.convert_to_tensor(inputs), y_weights, y_weights2, idx   prev
+            return [tf.convert_to_tensor(rslc), tf.convert_to_tensor(rslc2)], [y_weights, y_weights2]
 
-        return tf.convert_to_tensor(inputs), tf.convert_to_tensor(masks), tf.convert_to_tensor(masks2), idx
+        # return tf.convert_to_tensor(inputs), tf.convert_to_tensor(masks), tf.convert_to_tensor(masks2), idx prev
+
+        return tf.convert_to_tensor(rslc), tf.convert_to_tensor(rslc2), tf.convert_to_tensor(masks), tf.convert_to_tensor(masks2), idx
 
 
 def get_train_val_dataloader(config):
@@ -960,7 +1023,7 @@ def get_test_dataloader(config):
     test_dataset = MyDataset(test_dir,
                              in_channels=config['in_channels'], patchify=config['patchify'],
                              batch_size=config['batch_size'], transform_fn=transform_data,
-                             num_class=config['num_classes'], patch_idx=test_idx, tile_width=config["width"])
+                             num_class=config['num_classes'], patch_idx=test_idx, tile_width=config["tiles_size"])
 
     return test_dataset
 
@@ -968,15 +1031,34 @@ def get_test_dataloader(config):
 
 
 if __name__ == '__main__':
-    
-    train_dir = pd.read_csv("/mnt/hdd2/mdsamiul/waterbody_detection_complex_data/data/train.csv")
-    valid_dir = pd.read_csv("/mnt/hdd2/mdsamiul/waterbody_detection_complex_data/data/valid.csv")
 
-    train_dataset = MyDataset(train_dir,
-                                in_channels=3, patchify=False,
-                                batch_size=10, transform_fn=transform_data, 
-                                num_class=2, augment=None, 
-                                weights=None, patch_idx=None, tile_width=512)
+    
+
+    from config import get_config
+    config = get_config()
+
+    os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
+    os.environ["CUDA_VISIBLE_DEVICES"] = config["gpu"]
+    os.environ['TF_FORCE_GPU_ALLOW_GROWTH'] = 'true'
+
+    train_dataset, val_dataset = get_train_val_dataloader(config)
+    for x,y in train_dataset:
+        print(x[0].shape)
+        print(x[1].shape)
+        # print(len(x))
+        print(y[0].shape)
+        print(y[1].shape)
+        # print(len(y))
+        break
+    
+    # train_dir = pd.read_csv("/mnt/hdd2/mdsamiul/waterbody_detection_complex_data/data/train.csv")
+    # valid_dir = pd.read_csv("/mnt/hdd2/mdsamiul/waterbody_detection_complex_data/data/valid.csv")
+
+    # train_dataset = MyDataset(train_dir,
+    #                             in_channels=3, patchify=False,
+    #                             batch_size=10, transform_fn=transform_data, 
+    #                             num_class=2, augment=None, 
+    #                             weights=None, patch_idx=None, tile_width=512)
     
     #x, y = train_dataset.__getitem__(1)
     # for batch in train_dataset:

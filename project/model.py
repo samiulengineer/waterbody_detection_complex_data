@@ -95,6 +95,88 @@ class CustomModel(keras.Model):
         return {m.name: m.result() for m in self.metrics}
 
 
+# MIMONET Model
+# ----------------------------------------------------------------------------------------------
+
+def mimonetEncoder(inputs):
+
+    c1 = Conv2D(16, (3, 3), activation='relu', kernel_initializer='he_normal', padding='same')(inputs)
+    c1 = Dropout(0.2)(c1)  # Original 0.1
+    c1 = Conv2D(16, (3, 3), activation='relu', kernel_initializer='he_normal', padding='same')(c1)
+    p1 = MaxPooling2D((2, 2))(c1)
+        
+    c2 = Conv2D(32, (3, 3), activation='relu', kernel_initializer='he_normal', padding='same')(p1)
+    c2 = Dropout(0.2)(c2)  # Original 0.1
+    c2 = Conv2D(32, (3, 3), activation='relu', kernel_initializer='he_normal', padding='same')(c2)
+    p2 = MaxPooling2D((2, 2))(c2)
+
+    c3 = Conv2D(64, (3, 3), activation='relu', kernel_initializer='he_normal', padding='same')(p2)
+    c3 = Dropout(0.2)(c3)
+    c3 = Conv2D(64, (3, 3), activation='relu', kernel_initializer='he_normal', padding='same')(c3)
+    p3 = MaxPooling2D((2, 2))(c3)
+
+    c4 = Conv2D(128, (3, 3), activation='relu', kernel_initializer='he_normal', padding='same')(p3)
+    c4 = Dropout(0.2)(c4)
+    c4 = Conv2D(128, (3, 3), activation='relu', kernel_initializer='he_normal', padding='same')(c4)
+    p4 = MaxPooling2D(pool_size=(2, 2))(c4)
+
+    c5 = Conv2D(256, (3, 3), activation='relu', kernel_initializer='he_normal', padding='same')(p4)
+    c5 = Dropout(0.3)(c5)
+    c5 = Conv2D(256, (3, 3), activation='relu', kernel_initializer='he_normal', padding='same')(c5)
+
+    return [c1, c2, c3, c4, c5]
+
+def mimonetDecoder(c1, c2, c3, c4, c5):
+    u6 = Conv2DTranspose(128, (2, 2), strides=(2, 2), padding='same')(c5)
+    u6 = concatenate([u6, c4])
+    c6 = Conv2D(128, (3, 3), activation='relu', kernel_initializer='he_normal', padding='same')(u6)
+    c6 = Dropout(0.2)(c6)
+    c6 = Conv2D(128, (3, 3), activation='relu', kernel_initializer='he_normal', padding='same')(c6)
+
+    u7 = Conv2DTranspose(64, (2, 2), strides=(2, 2), padding='same')(c6)
+    u7 = concatenate([u7, c3])
+    c7 = Conv2D(64, (3, 3), activation='relu', kernel_initializer='he_normal', padding='same')(u7)
+    c7 = Dropout(0.2)(c7)
+    c7 = Conv2D(64, (3, 3), activation='relu', kernel_initializer='he_normal', padding='same')(c7)
+
+    u8 = Conv2DTranspose(32, (2, 2), strides=(2, 2), padding='same')(c7)
+    u8 = concatenate([u8, c2])
+    c8 = Conv2D(32, (3, 3), activation='relu', kernel_initializer='he_normal', padding='same')(u8)
+    c8 = Dropout(0.2)(c8)  # Original 0.1
+    c8 = Conv2D(32, (3, 3), activation='relu', kernel_initializer='he_normal', padding='same')(c8)
+
+    u9 = Conv2DTranspose(16, (2, 2), strides=(2, 2), padding='same')(c8)
+    u9 = concatenate([u9, c1], axis=3)
+    c9 = Conv2D(16, (3, 3), activation='relu', kernel_initializer='he_normal', padding='same')(u9)
+    c9 = Dropout(0.2)(c9)  # Original 0.1
+    c9 = Conv2D(16, (3, 3), activation='relu', kernel_initializer='he_normal', padding='same')(c9)
+
+    return c9
+
+
+def mimonet(config):
+    
+    inputs1 = Input((config['height'], config['width'], config['in_channels']), name="in1")
+    inputs2 = Input((config['height'], config['width'], config['in_channels']), name="in2")
+
+
+    encoder1 = mimonetEncoder(inputs1)
+    encoder2 = mimonetEncoder(inputs2)
+        
+    x_concat = Concatenate(axis=-1)([encoder1[4], encoder2[4]])
+    dec_in = Conv2D(256, (3,3), activation='relu', padding='same')(x_concat)
+
+    decoder1 = mimonetDecoder(encoder1[0], encoder1[1], encoder1[2], encoder1[3], dec_in)
+    decoder2 = mimonetDecoder(encoder2[0], encoder2[1], encoder2[2], encoder2[3], dec_in)
+
+    output1 = Conv2D(config['num_classes'], (1, 1), activation='softmax', dtype='float32', name="out1")(decoder1)
+    output2 = Conv2D(config['num_classes'], (1, 1), activation='softmax', dtype='float32', name="out2")(decoder2)
+
+    model = Model(inputs=[inputs1, inputs2], outputs=[output1, output2])
+        
+    return model
+
+
 # UNET Model
 # ----------------------------------------------------------------------------------------------
 
@@ -1613,8 +1695,8 @@ def get_model(config):
         model (object): keras.Model class object
     """
 
-
     models = {'unet': unet,
+              'mimonet': mimonet,
               'fapnet': mod_unet,
               'ex_mnet':ex_mnet,
               'dncnn': DnCNN,

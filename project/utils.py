@@ -325,7 +325,7 @@ def patch_show_predictions(dataset, model, config):
     # loop to traverse full dataset
     for i in range(len(full_img_dir)):
         # get tiles size
-        mask_size = config["height"]
+        mask_size = config['tiles_size']
         # for same mask directory get the index
         idx = df[df["rslc0_label"] == full_img_dir["rslc0_label"][i]].index
 
@@ -457,8 +457,12 @@ def val_show_predictions(dataset, model, config):
     pred_full_label2 = np.zeros((mask_size, mask_size), dtype=int)
     for j in idx:
         p_idx = patch_dir["patch_idx"][j]
-        feature, _, _, indexNum = dataset.get_random_data(j)
-        pred1, pred2 = model.predict(feature)
+        # feature, _, _, indexNum = dataset.get_random_data(j)  prev
+        # pred1, pred2 = model.predict(feature)
+
+        rslc, rslc2, _, _, indexNum = dataset.get_random_data(j)
+        pred1, pred2 = model.predict([rslc, rslc2])
+
         pred1 = np.argmax(pred1, axis=3)
         pred2 = np.argmax(pred2, axis=3)
         pred_full_label1[p_idx[0]:p_idx[1], p_idx[2]:p_idx[3]] = pred1[0] 
@@ -466,7 +470,9 @@ def val_show_predictions(dataset, model, config):
         
     
     # get full feature image and mask
-    full_feature , full_mask1, full_mask2 = read_img(full_img_dir.iloc[i], width=config['tiles_size'])
+    # full_feature , full_mask1, full_mask2 = read_img(full_img_dir.iloc[i], width=config['tiles_size'])    prev
+    
+    full_feature1, full_feature2, full_mask1, full_mask2 = read_img(full_img_dir.iloc[i], width=config['tiles_size'])
     
     # calculate keras MeanIOU score
     m1 = keras.metrics.MeanIoU(num_classes=config['num_classes'])
@@ -479,9 +485,9 @@ def val_show_predictions(dataset, model, config):
 
     # plot and saving image
         
-    display({"RSLC1 AMP": full_feature[:,:,0],
-            "RSLC2 AMP": full_feature[:,:,1],
-            "IFG": full_feature[:,:,2],
+    display({"RSLC1 AMP": full_feature1,
+            "RSLC2 AMP": full_feature2,
+            # "IFG": full_feature[:,:,2],
             "RSLC1 Mask": full_mask1,
             "RSLC2 Mask": full_mask2,
             "RSLC1 (MeanIOU_{:.4f})".format(score1): pred_full_label1,

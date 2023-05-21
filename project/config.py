@@ -3,7 +3,7 @@ from datetime import datetime
 config = {
     # Image Input/Output
     # ----------------------------------------------------------------------------------------------
-    'in_channels': 3,
+    'in_channels': 1,
     'num_classes': 2,
     'height': 512, #for PHR-CB experiment patch size = height = width
     'width': 512,  # image height and width must be same because we are patchifing square images from 11361 X 10820 image.
@@ -13,15 +13,15 @@ config = {
     
     # Training
     # ----------------------------------------------------------------------------------------------
-    # mnet = fapnet, unet, ex_mnet*, dncnn, u2net, vnet, unet++, sm_unet, sm_linknet, sm_fpn, sm_pspnet*, kuc_vnet, kuc_unet3pp, kuc_r2unet,# kuc_unetpp*, 'kuc_restunet', kuc_tensnet*, 'kuc_swinnet', kuc_u2net, kuc_attunet, ad_unet, transformer
-    'model_name': 'unet',
-    'batch_size': 10,
+    # mnet = fapnet, unet, mimonet, ex_mnet*, dncnn, u2net, vnet, unet++, sm_unet, sm_linknet, sm_fpn, sm_pspnet*, kuc_vnet, kuc_unet3pp, kuc_r2unet,# kuc_unetpp*, 'kuc_restunet', kuc_tensnet*, 'kuc_swinnet', kuc_u2net, kuc_attunet, ad_unet, transformer
+    'model_name': 'mimonet',
+    'batch_size': 5,
     'epochs': 1000,
     'learning_rate': 0.0003,  #3e-4
     'val_plot_epoch': 10,
     'augment': True,
     'transfer_lr': False,
-    'gpu': '3',
+    'gpu': '2',
     
     # Experiment Setup
     # ----------------------------------------------------------------------------------------------
@@ -33,7 +33,7 @@ config = {
     # ----------------------------------------------------------------------------------------------
     'patchify': True,
     'patch_class_balance': True, # whether to use class balance while doing patchify
-    'patch_size': 512, # height = width, anysize is suitable
+    'patch_size': 256, # height = width, anysize is suitable
     'stride': 64,
     
     # Dataset
@@ -61,7 +61,7 @@ config = {
 
     # Evaluation
     # ----------------------------------------------------------------------------------------------
-    'load_model_name': 'aunet_ex_phr_epochs_1000_06-May-23.hdf5',
+    'load_model_name': 'aunet_ex_phr_cb_epochs_1000_11-May-23.hdf5',
     'load_model_dir': '/mnt/hdd2/mdsamiul/waterbody_detection_complex_data/logs/model/unet/', #  If None, then by befault 'root_dir/model/model_name/load_model_name'
     'evaluation': False, # default evaluation value will not work
     'video_path': None, # If None, then by default 'root_dir/data/video_frame'
