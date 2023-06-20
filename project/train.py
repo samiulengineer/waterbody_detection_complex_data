@@ -1,4 +1,5 @@
 import os
+import cv2
 import argparse
 import time
 from loss import *
@@ -109,6 +110,28 @@ else:
 # ----------------------------------------------------------------------------------------------
 loggers = SelectCallbacks(val_dataset, model, config)
 model.summary()
+
+# plot model
+# ----------------------------------------------------------------------------------------------
+# import visualkeras
+# from PIL import ImageFont
+
+# font_path = os.path.join(cv2.__path__[0],'qt','fonts','DejaVuSans.ttf')
+# font = ImageFont.truetype(font_path, size=40)
+# # font = ImageFont.load_default()
+# to_file = config["visualization_dir"] + 'output.png'
+# visualkeras.layered_view(model, to_file=to_file, legend=True, font=font, padding=20)
+
+# tf.keras.utils.plot_model(
+#     model,
+#     to_file= config["visualization_dir"] + 'model.png',
+#     show_shapes=True,
+#     show_layer_names=True,
+#     rankdir='TB',
+#     expand_nested=False,
+#     dpi=1000,
+# )
+
 
 # Fit
 # ----------------------------------------------------------------------------------------------

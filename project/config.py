@@ -15,13 +15,13 @@ config = {
     # ----------------------------------------------------------------------------------------------
     # mnet = fapnet, unet, mimonet, ex_mnet*, dncnn, u2net, vnet, unet++, sm_unet, sm_linknet, sm_fpn, sm_pspnet*, kuc_vnet, kuc_unet3pp, kuc_r2unet,# kuc_unetpp*, 'kuc_restunet', kuc_tensnet*, 'kuc_swinnet', kuc_u2net, kuc_attunet, ad_unet, transformer
     'model_name': 'mimonet',
-    'batch_size': 5,
+    'batch_size': 10,
     'epochs': 1000,
     'learning_rate': 0.0003,  #3e-4
-    'val_plot_epoch': 10,
+    'val_plot_epoch': 1,
     'augment': True,
     'transfer_lr': False,
-    'gpu': '2',
+    'gpu': '3',
     
     # Experiment Setup
     # ----------------------------------------------------------------------------------------------
@@ -38,7 +38,7 @@ config = {
     
     # Dataset
     # --------------------------------mask--------------------------------------------------------------
-    'weights': True, # False if cfr, True if cfr_cb
+    'weights': False, # False if cfr, True if cfr_cb
     'balance_weights': [0.76, 0.24],
     'root_dir': '/mnt/hdd2/mdsamiul/waterbody_detection_complex_data',
     'dataset_dir': '/mnt/hdd2/mdsamiul/waterbody_detection_complex_data/data/',

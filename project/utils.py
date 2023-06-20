@@ -67,7 +67,8 @@ class SelectCallbacks(keras.callbacks.Callback):
         if (epoch % self.config['val_plot_epoch'] == 0):  # every after certain epochs the model will predict mask
             # save image/images with their mask, pred_mask and accuracy
             if self.config['patchify']:
-                val_show_predictions(self.val_dataset, self.model, self.config)
+                # val_show_predictions(self.val_dataset, self.model, self.config)
+                show_predictions(self.val_dataset, self.model, self.config, val=True)
             else:
                 show_predictions(self.val_dataset, self.model, self.config, val=True)
 
@@ -402,26 +403,48 @@ def show_predictions(dataset, model, config, val=False):
         idx = 0
     
     print(len(data))
-    for feature, mask1, mask2, idx in data: # save all image prediction in the dataset
-        # feature, mask1, mask2, idx = data_p
-        pred1, pred2 = model.predict_on_batch(feature)
+
+
+    # for feature, mask1, mask2, idx in data: # save all image prediction in the dataset
+    #     # feature, mask1, mask2, idx = data_p
+    #     pred1, pred2 = model.predict_on_batch(feature)
+    #     mask1, pred_mask1 = create_mask(mask1, pred1)
+    #     mask2, pred_mask2 = create_mask(mask2, pred2)
+    #     for i in range(len(feature)): # save single image prediction in the batch
+    #         m1 = keras.metrics.MeanIoU(num_classes=config['num_classes'])
+    #         m2 = keras.metrics.MeanIoU(num_classes=config['num_classes'])
+    #         m1.update_state(mask1[i], pred_mask1[i])
+    #         m2.update_state(mask2[i], pred_mask2[i])
+    #         score1 = m1.result().numpy()
+    #         score2 = m2.result().numpy()
+    #         display({"RSLC1 AMP": feature[i][:,:,0],
+    #                  "RSLC2 AMP ": feature[i][:,:,1],
+    #                  "IFG": feature[i][:,:,2],
+    #                   "RSLC1 Mask": mask1[i],
+    #                   "RSLC2 Mask": mask2[i],
+    #                   "RSLC1 (MeanIOU_{:.4f})".format(score1): pred_mask1[i],
+    #                   "RSLC2 (MeanIOU_{:.4f})".format(score2): pred_mask2[i]
+    #                   }, idx, directory, 0, config['experiment'])
+    #         idx += 1
+
+    for feature1, feature2, mask1, mask2, idx in data: # save all image prediction in the dataset
+        pred1, pred2 = model.predict_on_batch([feature1, feature2])
         mask1, pred_mask1 = create_mask(mask1, pred1)
         mask2, pred_mask2 = create_mask(mask2, pred2)
-        for i in range(len(feature)): # save single image prediction in the batch
+        for i in range(len(feature1)): # save single image prediction in the batch
             m1 = keras.metrics.MeanIoU(num_classes=config['num_classes'])
             m2 = keras.metrics.MeanIoU(num_classes=config['num_classes'])
             m1.update_state(mask1[i], pred_mask1[i])
             m2.update_state(mask2[i], pred_mask2[i])
             score1 = m1.result().numpy()
             score2 = m2.result().numpy()
-            display({"RSLC1 AMP": feature[i][:,:,0],
-                     "RSLC2 AMP ": feature[i][:,:,1],
-                     "IFG": feature[i][:,:,2],
+            display({"RSLC1 AMP": feature1[i],
+                     "RSLC2 AMP ": feature2[i],
                       "RSLC1 Mask": mask1[i],
                       "RSLC2 Mask": mask2[i],
                       "RSLC1 (MeanIOU_{:.4f})".format(score1): pred_mask1[i],
                       "RSLC2 (MeanIOU_{:.4f})".format(score2): pred_mask2[i]
-                      }, idx, directory, 0, config['experiment'])
+                      }, idx, directory, score1, config['experiment'])
             idx += 1
             
             
@@ -446,7 +469,7 @@ def val_show_predictions(dataset, model, config):
     df = pd.DataFrame.from_dict(patch_dir)  # read as panadas dataframe
     full_img_dir = pd.read_csv(config[var_list[0]])  # get the csv file
 
-    i = random.randint(0, len(full_img_dir))
+    i = random.randint(0, len(full_img_dir)-1)      # randomly generate index number that is 0 to less than length
     # get tiles size
     mask_size = config["tiles_size"]
     # for same mask directory get the index

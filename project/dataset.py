@@ -828,7 +828,8 @@ class MyDataset(Sequence):
 
 
         # return inputs, [masks, masks2]    prev
-        return [rslc, rslc2], [masks, masks2]
+        # return [rslc, rslc2], [masks, masks2] prev prev
+        return [tf.convert_to_tensor(rslc), tf.convert_to_tensor(rslc2)], [tf.convert_to_tensor(masks), tf.convert_to_tensor(masks2)]
         
     
 
@@ -970,7 +971,7 @@ def get_train_val_dataloader(config):
                                 weights=weights, patch_idx=train_idx, tile_width=config["tiles_size"])
 
     val_dataset = MyDataset(valid_dir,
-                            in_channels=config['in_channels'],patchify=config['patchify'],
+                            in_channels=config['in_channels'], patchify=config['patchify'],
                             batch_size=config['batch_size'], transform_fn=transform_data, 
                             num_class=config['num_classes'],patch_idx=valid_idx, tile_width=config["tiles_size"])
     
@@ -1033,24 +1034,111 @@ def get_test_dataloader(config):
 if __name__ == '__main__':
 
     
-
-    from config import get_config
-    config = get_config()
+    print("Complete.")
 
     os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
-    os.environ["CUDA_VISIBLE_DEVICES"] = config["gpu"]
+    os.environ["CUDA_VISIBLE_DEVICES"] = "2"
     os.environ['TF_FORCE_GPU_ALLOW_GROWTH'] = 'true'
 
-    train_dataset, val_dataset = get_train_val_dataloader(config)
-    for x,y in train_dataset:
-        print(x[0].shape)
-        print(x[1].shape)
-        # print(len(x))
-        print(y[0].shape)
-        print(y[1].shape)
-        # print(len(y))
-        break
+# from config import get_config
+# config = get_config()
+
+
+# train_dataset, val_dataset = get_train_val_dataloader(config)
+
     
+# check all batch data type
+# type_x = []
+# type_y = []
+# for x,y in train_dataset:
+#     tyx = type(x)
+#     tyy = type(y)
+#     if tyx not in type_x:
+#         type_x.append(tyx)
+#     if tyy not in type_y:
+#         type_y.append(tyy)
+# print(type_x)
+# print(type_y)
+    
+    
+# check batch length
+# print(train_dataset.__len__())
+# print(val_dataset.__len__())
+
+
+# get a specific batch of data
+# x, y = train_dataset.__getitem__(1)
+
+
+# check unique value in valid_dataset
+# label_unique = []
+# for _, y in val_dataset:
+#     val = np.unique(y[0])
+#     for i in val:
+#         if i not in label_unique:
+#             label_unique.append(i)
+# print(label_unique)
+
+
+# check unique value in train_dataset
+# label_unique = []
+# for _, y in train_dataset:
+#     val = np.unique(y[0].numpy())
+#     for i in val:
+#         if i not in label_unique:
+#             label_unique.append(i)
+#     break
+# print(label_unique)
+
+
+# check value of each image in a single batch 
+# for _, y in train_dataset:
+#     val = y[0].numpy()
+#     for i in range(len(y[0])):
+#         val = np.unique(y[0][i])
+#         print(val)
+#     break
+
+
+# read single rslc image
+# path = '/mnt/hdd2/mdsamiul/waterbody_detection_complex_data/data/rslc0/features/20131009_5_5.rslc'
+# rslc0 = data_reader.readBin(path, width=1024, dataType='floatComplex')
+
+# type(rslc0)
+
+# np.unique(rslc0)
+
+# rslc0_amp = np.abs(rslc0)
+# np.unique(rslc0_amp)
+
+# len(np.unique(rslc0_amp))
+
+# scaler = MinMaxScaler((0.0,0.9999999))
+# inputs = []
+# inputs.append(scaler.fit_transform(rslc0_amp))
+# np.unique(inputs)
+
+
+# plot label
+
+# from utils import display, create_mask
+# directory = "/mnt/hdd2/mdsamiul/waterbody_detection_complex_data/plot_val"
+
+# label_unique = []
+# for x, y in val_dataset:
+#     for i in range(len(x)):
+#         display({"RSLC1 AMP": x[0][i],
+#                 "RSLC2 AMP ": x[1][i],
+#                 "RSLC1 Mask": np.argmax(y[0][i], axis = 2),
+#                 "RSLC2 Mask": np.argmax(y[1][i], axis = 2)
+#                 }, i, directory, 0, config['experiment'], visualize=True)
+#         break
+#     break
+
+
+
+    
+    # check data from Mydataset class
     # train_dir = pd.read_csv("/mnt/hdd2/mdsamiul/waterbody_detection_complex_data/data/train.csv")
     # valid_dir = pd.read_csv("/mnt/hdd2/mdsamiul/waterbody_detection_complex_data/data/valid.csv")
 
@@ -1070,13 +1158,6 @@ if __name__ == '__main__':
     # print(tf.shape(y))
     # print(train_dataset.__len__())
     
-    # for x,y in train_dataset:
-    #     print(type(x))
-    #     print(x.shape)
-    #     print(type(y))
-    #     print(y[0].shape)
-    #     print(y[1].shape)
-    #     break
     
     # import matplotlib.pyplot as plt
     # for x,y in train_dataset:
@@ -1110,7 +1191,7 @@ if __name__ == '__main__':
 #                             num_class=2, augment=None, 
 #                             weights=None, patch_idx=None, tile_width=512)
 
-# x, y = train_dataset.__getitem__(1)
+
 # for batch in train_dataset:
 #     x, y = batch
 #     break
@@ -1139,3 +1220,7 @@ if __name__ == '__main__':
 # valid_idx = valid_dir['patch_idx']
 # train_dir = pd.DataFrame.from_dict(train_dir)
 # valid_dir = pd.DataFrame.from_dict(valid_dir)
+
+
+
+# print(label_unique)
